@@ -173,7 +173,7 @@ Add detection and optimization features for power users.
 
 ## Phase 4: SaaS Platform (v1.0.0) - Deferred
 
-> **Note**: Do not start until Prerequisites are met. See `docs/30-future-saas-vision.md` for archived plans.
+> **Note**: Do not start until Prerequisites are met.
 
 ### Prerequisites (All Required)
 
@@ -272,4 +272,4 @@ Add detection and optimization features for power users.
 
 - [Task Breakdown](./11-task-breakdown.md) - Detailed implementation tasks
 - [Technical Architecture](./04-technical-architecture.md) - System design
-- [Future SaaS Vision](./30-future-saas-vision.md) - Deferred SaaS plans
+- [Future Roadmap](./10-future-roadmap.md) - Long-term vision

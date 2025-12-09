@@ -379,7 +379,7 @@ struct-audit suggest <binary> --struct <name>
 
 ## Phase 4: SaaS Platform (P2 - Only If Monetizing)
 
-**Deferred**. See `docs/30-future-saas-vision.md` for archived plans.
+**Deferred**. Focus on CLI first.
 
 Do not start until:
 1. CLI v0.2.0 is stable

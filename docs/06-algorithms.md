@@ -831,6 +831,6 @@ pub fn suggest_false_sharing_fix(
 
 ## Next Steps
 
-→ [Business Model](./07-business-model.md) - Pricing and go-to-market strategy
+→ [Implementation Roadmap](./08-implementation-roadmap.md) - Development plan
 
 

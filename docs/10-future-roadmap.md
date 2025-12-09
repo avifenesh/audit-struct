@@ -352,48 +352,9 @@ struct UserCold {
 
 ---
 
-## 7. Competitive Moat Evolution
-
-### Phase 1: Technical Excellence
-- Best-in-class DWARF parsing
-- Superior UX and output
-
-### Phase 2: Data Network Effects
-- Historical data creates switching costs
-- Team collaboration features
-
-### Phase 3: Ecosystem Lock-in
-- IDE integration
-- Build system plugins
-- CI/CD native support
-
-### Phase 4: AI Differentiation
-- Unique ML models trained on our data
-- Predictive optimization
-
----
-
-## 8. Success Metrics (Long-Term)
-
-| Metric | Year 3 Target | Year 5 Target |
-|--------|---------------|---------------|
-| CLI Downloads | 500K | 2M |
-| Active Users | 50K | 200K |
-| Paid Customers | 1,000 | 5,000 |
-| ARR | $2M | $15M |
-| Enterprise Deals | 50 | 200 |
-
----
-
 ## Conclusion
 
-**struct-audit** has the potential to become an essential tool in every systems programmer's toolkit. By starting with a focused, high-quality CLI and expanding into a comprehensive platform, we can capture a significant share of the performance tooling market while genuinely improving the quality of systems software worldwide.
-
-The roadmap balances:
-- **Near-term value**: Shipping useful features quickly
-- **Technical depth**: Solving hard problems correctly
-- **Business viability**: Building sustainable revenue
-- **Long-term vision**: Becoming the definitive platform
+**struct-audit** aims to become an essential tool in every systems programmer's toolkit. The roadmap prioritizes shipping useful features quickly while solving hard problems correctly.
 
 ---
 
@@ -401,14 +362,11 @@ The roadmap balances:
 
 | Document | Description |
 |----------|-------------|
-| [00-executive-summary.md](./00-executive-summary.md) | High-level overview |
 | [01-vision-and-problem.md](./01-vision-and-problem.md) | The Memory Wall problem |
-| [02-market-analysis.md](./02-market-analysis.md) | Competitive landscape |
 | [03-product-specification.md](./03-product-specification.md) | Feature requirements |
 | [04-technical-architecture.md](./04-technical-architecture.md) | System design |
 | [05-dwarf-technical-deep-dive.md](./05-dwarf-technical-deep-dive.md) | DWARF parsing |
 | [06-algorithms.md](./06-algorithms.md) | Analysis algorithms |
-| [07-business-model.md](./07-business-model.md) | Pricing and GTM |
 | [08-implementation-roadmap.md](./08-implementation-roadmap.md) | Development plan |
 | [09-api-specification.md](./09-api-specification.md) | API contracts |
 | [10-future-roadmap.md](./10-future-roadmap.md) | Long-term vision |
