@@ -40,7 +40,7 @@
 - Learn best practices for cache-efficient design
 
 **Pain Points**:
-- `pahole` is clunky and Linux-only
+- `pahole` is Linux-only and lacks CI integration
 - No easy way to compare layouts across commits
 - Memory layout is "invisible" in normal workflow
 

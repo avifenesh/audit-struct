@@ -42,14 +42,14 @@ This creates **silent technical debt**—performance regressions that pass all t
 | **Embedded Systems / IoT** | RAM costs = BOM costs | High |
 | **AAA Game Development** | Cache misses = Frame drops | High |
 
-### Competitive Gap
+### Complementary to Existing Tools
 
-Existing tools (`pahole`, `ddbug`, IDE plugins) are:
-- Fragmented and platform-specific
+Existing tools (`pahole`, `ddbug`, IDE plugins) are excellent for local analysis but:
 - Local-only with no historical tracking
 - Not integrated into CI/CD workflows
+- No team collaboration features
 
-**struct-audit** is the first tool to treat memory layout as a **continuous metric** like code coverage.
+**struct-audit** complements these tools by adding CI integration, historical tracking, and team visibility—treating memory layout as a **continuous metric** like code coverage.
 
 ---
 
@@ -63,7 +63,7 @@ Existing tools (`pahole`, `ddbug`, IDE plugins) are:
 
 ### Go-to-Market: "Trojan Horse" Strategy
 
-1. **Win the Developer**: Free, open-source CLI superior to `pahole`
+1. **Win the Developer**: Free, open-source CLI complementing `pahole`
 2. **Embed in Workflow**: Native CI/CD integration (GitHub Actions, GitLab CI)
 3. **Monetize the Manager**: SaaS dashboard for team visibility and governance
 

@@ -1,54 +1,84 @@
 # Implementation Roadmap
 
-## Phased Development Plan with Milestones and Deliverables
+## Phased Development Plan
+
+> **Context**: Solo side project. No fixed calendar deadlines. Focus on shipping MVP before expanding scope.
 
 ---
 
-## 1. Overview
+## Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                      Implementation Timeline                             │
+│                      Implementation Phases                               │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
-│  PHASE 1          PHASE 2           PHASE 3          PHASE 4            │
-│  Core CLI         Advanced CLI      SaaS MVP         Enhancement        │
-│  Weeks 1-6        Weeks 7-10        Weeks 11-16      Weeks 17+          │
+│  PHASE 1 (MVP)       PHASE 2            PHASE 3          PHASE 4        │
+│  Core CLI            Enhanced CLI       Advanced         SaaS           │
+│                                                          (Deferred)     │
+│  ┌─────────┐        ┌─────────┐        ┌─────────┐      ┌─────────┐    │
+│  │ ELF     │        │ Mach-O  │        │ False   │      │ Backend │    │
+│  │ Loader  │───────▶│ PE      │───────▶│ Sharing │─ ─ ─▶│ API     │    │
+│  │         │        │         │        │         │      │         │    │
+│  │ Basic   │        │ Diff    │        │ Suggest │      │ GitHub  │    │
+│  │ Inspect │        │ Check   │        │ Command │      │ App     │    │
+│  └─────────┘        └─────────┘        └─────────┘      └─────────┘    │
 │                                                                          │
-│  ┌─────────┐     ┌─────────┐       ┌─────────┐      ┌─────────┐        │
-│  │ DWARF   │     │ Diff    │       │ Backend │      │ Suggest │        │
-│  │ Parser  │────▶│ Engine  │──────▶│ API     │─────▶│ Engine  │        │
-│  │         │     │         │       │         │      │         │        │
-│  │ Basic   │     │ CI Mode │       │ GitHub  │      │ Go Lang │        │
-│  │ Output  │     │         │       │ App     │      │ Support │        │
-│  └─────────┘     └─────────┘       └─────────┘      └─────────┘        │
-│                                                                          │
-│  v0.1.0          v0.2.0            v1.0.0           v1.1.0+             │
-│  Alpha           Beta              GA               Enhanced            │
+│  v0.1.0             v0.2.0             v0.3.0           v1.0.0          │
+│  Alpha              Beta               Release          (If needed)     │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Phase 1: Core CLI Development (Weeks 1-6)
+## Phase 1: Core CLI MVP (v0.1.0-alpha)
 
-### 2.1 Objective
+### Objective
 
-Build a robust DWARF parser that **matches pahole in accuracy** but **exceeds it in usability**.
+Ship `struct-audit inspect <binary>` for ELF binaries. Match pahole accuracy for simple structs while providing better UX.
 
-### 2.2 Week-by-Week Breakdown
+### Scope
 
-#### Week 1: Project Setup
+**In Scope**:
+- ELF binary support (Linux)
+- Constant member offset parsing
+- Basic type resolution (primitives, pointers, typedefs, arrays)
+- Padding detection and visualization
+- Cache line analysis
+- Table and JSON output
+- `inspect` command only
 
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 1.1 | Initialize Rust workspace | `Cargo.toml` with dependencies |
-| 1.2 | Set up CI (GitHub Actions) | Build + test on Linux/macOS/Windows |
-| 1.3 | Create project structure | Module layout, error handling |
-| 1.4 | Add dependencies | `gimli`, `object`, `clap`, `serde` |
+**Explicitly Out of Scope**:
+- Mach-O/PE support
+- Expression-based offsets (C++ virtual inheritance)
+- DWARF 5 bitfields
+- `diff` command
+- `check` command
+- SaaS
 
-**Dependencies**:
+### Milestones
+
+| # | Milestone | Deliverable |
+|---|-----------|-------------|
+| 1 | Project Setup | Cargo.toml, project structure, CI |
+| 2 | Test Infrastructure | Test binary corpus, integration tests |
+| 3 | Binary Loading | ELF loader with debug section extraction |
+| 4 | DWARF Parsing | gimli context, struct finder, attribute extraction |
+| 5 | Member Extraction | Constant offsets, basic type resolution |
+| 6 | Analysis | Padding detection, cache line analysis |
+| 7 | Output | Table formatter, JSON formatter |
+| 8 | Polish | Error handling, README, release |
+
+### Success Criteria
+
+- [ ] Parses test fixtures without panics
+- [ ] Output matches manual inspection for test structs
+- [ ] Runs on real-world binary (e.g., your own Rust project)
+- [ ] Clear error message when debug info missing
+
+### Dependencies
+
 ```toml
 [dependencies]
 gimli = "0.28"
@@ -61,348 +91,185 @@ comfy-table = "7"
 colored = "2"
 thiserror = "1"
 anyhow = "1"
-
-[dev-dependencies]
-tempfile = "3"
-assert_cmd = "2"
-predicates = "3"
 ```
-
-#### Week 2: Binary Loading
-
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 2.1 | Implement ELF loader | `load_elf()` function |
-| 2.2 | Implement Mach-O loader | `load_macho()` function |
-| 2.3 | Implement PE loader | `load_pe()` function |
-| 2.4 | Create unified `BinaryLoader` trait | Platform abstraction |
-
-#### Week 3: DWARF Parsing Foundation
-
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 3.1 | Initialize gimli context | `DwarfContext` wrapper |
-| 3.2 | Iterate compilation units | `iter_units()` |
-| 3.3 | Find struct types | Filter `DW_TAG_structure_type` |
-| 3.4 | Extract basic attributes | Name, size, alignment |
-
-#### Week 4: Member Extraction
-
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 4.1 | Parse `DW_TAG_member` | Member extraction |
-| 4.2 | Resolve constant offsets | Simple `DW_AT_data_member_location` |
-| 4.3 | Implement type chain resolution | Follow `DW_AT_type` references |
-| 4.4 | Handle nested structs | Recursive parsing |
-
-#### Week 5: Expression Evaluator
-
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 5.1 | Implement location expression evaluator | Handle `DW_OP_*` opcodes |
-| 5.2 | Support common operations | `plus_uconst`, `constu`, etc. |
-| 5.3 | Handle edge cases | Virtual inheritance offsets |
-| 5.4 | Add comprehensive tests | Test with complex C++ binaries |
-
-#### Week 6: Output Formatting
-
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 6.1 | Implement table formatter | Colorized terminal output |
-| 6.2 | Implement JSON formatter | Machine-readable output |
-| 6.3 | Add padding visualization | Visual hole markers |
-| 6.4 | Add cache line markers | Boundary indicators |
-
-### 2.3 Phase 1 Deliverable
-
-**v0.1.0 Alpha Release**:
-- `struct-audit inspect <binary>` command
-- Displays memory layout of all structs
-- Supports ELF, Mach-O, PE binaries
-- Shows padding holes with visual indicators
-- JSON output option
-
-**Success Criteria**:
-- [ ] Parses Linux kernel binary without errors
-- [ ] Matches pahole output for 95%+ of structs
-- [ ] Completes analysis of 100MB binary in <5 seconds
 
 ---
 
-## 3. Phase 2: Advanced Analysis & Diffing (Weeks 7-10)
+## Phase 2: Enhanced CLI (v0.2.0-beta)
 
-### 3.1 Objective
+### Objective
 
-Handle edge cases, implement comparison logic, and enable CI integration.
+Handle edge cases, add comparison capabilities, enable CI integration.
 
-### 3.2 Week-by-Week Breakdown
+### Prerequisites
 
-#### Week 7: DWARF 5 Bitfields
+- Phase 1 complete
+- MVP used on at least one real project
+- Feedback collected on missing features
 
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 7.1 | Detect DWARF version | Version dispatch logic |
-| 7.2 | Implement DWARF 4 bitfield handling | `DW_AT_bit_offset` |
-| 7.3 | Implement DWARF 5 bitfield handling | `DW_AT_data_bit_offset` |
-| 7.4 | Add bitfield tests | Cross-version test suite |
+### Scope
 
-#### Week 8: Diff Algorithm
+**New Features**:
+- Mach-O loader (macOS)
+- PE loader (Windows)
+- Expression evaluator for complex member offsets
+- DWARF 4/5 bitfield support
+- `diff` command (compare two binaries)
+- `check` command (budget enforcement)
+- YAML configuration (`.struct-audit.yaml`)
+- GitHub Action
 
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 8.1 | Implement struct matching | By fully-qualified name |
-| 8.2 | Implement member diffing | Added/removed/changed |
-| 8.3 | Calculate deltas | Size, padding, cache lines |
-| 8.4 | Detect renames | Heuristic matching |
+### Milestones
 
-#### Week 9: CI Mode
+| # | Milestone | Deliverable |
+|---|-----------|-------------|
+| 1 | Expression Evaluator | Handle DW_OP_* for C++ offsets |
+| 2 | Bitfield Support | DWARF 4 and 5 bitfield parsing |
+| 3 | Cross-Platform | Mach-O and PE loaders |
+| 4 | Diff Command | Binary comparison with regression detection |
+| 5 | CI Mode | Budget config, check command, exit codes |
+| 6 | GitHub Action | action.yml, CI integration |
 
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 9.1 | Implement `check` command | Budget evaluation |
-| 9.2 | Add YAML config parser | `.struct-audit.yaml` |
-| 9.3 | Implement `--fail-on-growth` | Exit code logic |
-| 9.4 | Create GitHub Action | `struct-audit/action` |
+### Success Criteria
 
-#### Week 10: Polish & Documentation
-
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 10.1 | Write user documentation | README, CLI help |
-| 10.2 | Create example configs | Sample `.struct-audit.yaml` |
-| 10.3 | Performance optimization | Profiling, parallelization |
-| 10.4 | Beta testing | Community feedback |
-
-### 3.3 Phase 2 Deliverable
-
-**v0.2.0 Beta Release**:
-- `struct-audit diff <old> <new>` command
-- `struct-audit check <binary> --config .struct-audit.yaml`
-- DWARF 4 and 5 bitfield support
-- GitHub Action for CI integration
-- Exit codes for CI gating
-
-**Success Criteria**:
+- [ ] Parses C++ binaries with virtual inheritance
 - [ ] Diff output matches expected for test binaries
 - [ ] CI mode correctly fails on budget violations
 - [ ] GitHub Action works in sample repository
+- [ ] Runs on Linux, macOS, Windows
 
 ---
 
-## 4. Phase 3: SaaS Platform MVP (Weeks 11-16)
+## Phase 3: Advanced Analysis (v0.3.0)
 
-### 4.1 Objective
+### Objective
 
-Launch the web dashboard for historical tracking and team collaboration.
+Add detection and optimization features for power users.
 
-### 4.2 Week-by-Week Breakdown
+### Prerequisites
 
-#### Week 11-12: API Backend
+- Phase 2 complete
+- Users requesting advanced features
+- CLI stable and reliable
 
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 11.1 | Set up Axum project | Backend scaffold |
-| 11.2 | Implement auth (GitHub OAuth) | Login flow |
-| 11.3 | Create report upload endpoint | `POST /api/v1/reports` |
-| 11.4 | Implement repository management | CRUD operations |
-| 12.1 | Design database schema | PostgreSQL migrations |
-| 12.2 | Implement struct deduplication | Content-addressable storage |
-| 12.3 | Add API rate limiting | Redis-based |
-| 12.4 | Write API tests | Integration test suite |
+### Scope
 
-#### Week 13-14: GitHub Integration
+**New Features**:
+- False sharing detection (atomics on same cache line)
+- `suggest` command (optimal field ordering)
+- C++ inheritance visualization
+- Go language support (experimental)
 
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 13.1 | Register GitHub App | App configuration |
-| 13.2 | Implement webhook handler | PR events |
-| 13.3 | Create PR comment formatter | Markdown output |
-| 13.4 | Implement check status API | Pass/fail reporting |
-| 14.1 | Add commit status updates | GitHub Checks API |
-| 14.2 | Handle private repos | Installation tokens |
-| 14.3 | Test end-to-end flow | PR → Comment |
+### Milestones
 
-#### Week 15-16: Frontend Dashboard
+| # | Milestone | Deliverable |
+|---|-----------|-------------|
+| 1 | False Sharing | Detect atomics, warn on shared cache lines |
+| 2 | Suggestions | Bin-packing algorithm, before/after comparison |
+| 3 | Inheritance | C++ base class visualization |
+| 4 | Go Support | Parse Go DWARF output |
 
-| Task | Description | Deliverable |
-|------|-------------|-------------|
-| 15.1 | Set up Next.js project | Frontend scaffold |
-| 15.2 | Implement auth pages | Login, OAuth callback |
-| 15.3 | Create dashboard overview | Health score, trends |
-| 15.4 | Build struct list view | Sortable, searchable |
-| 16.1 | Implement struct history | Timeline, sparklines |
-| 16.2 | Add budget configuration UI | Visual editor |
-| 16.3 | Deploy to Render | Production deployment |
-| 16.4 | Launch announcement | Blog post, social media |
+---
 
-### 4.3 Phase 3 Deliverable
+## Phase 4: SaaS Platform (v1.0.0) - Deferred
 
-**v1.0.0 GA Release**:
-- SaaS platform at `app.struct-audit.io`
-- GitHub App for PR integration
-- Dashboard with:
-  - Health score
-  - Trend charts
-  - Struct history
-  - Budget management
-- PR comments with layout changes
+> **Note**: Do not start until Prerequisites are met. See `docs/30-future-saas-vision.md` for archived plans.
+
+### Prerequisites (All Required)
+
+1. CLI v0.2.0+ is stable
+2. CLI has real users (not just you)
+3. Multiple users request historical tracking
+4. You're willing to maintain hosted infrastructure
+
+### Scope (When Ready)
+
+- Backend API (Axum + PostgreSQL)
+- GitHub/GitLab App integration
+- Web dashboard (Next.js)
+- PR comments
 - Historical tracking
-
-**Success Criteria**:
-- [ ] Users can sign up with GitHub
-- [ ] Reports upload and display correctly
-- [ ] PR comments post automatically
-- [ ] Dashboard loads in <2 seconds
+- Budget management UI
 
 ---
 
-## 5. Phase 4: Advanced Features & Hardening (Weeks 17+)
+## Technical Decisions
 
-### 5.1 Objective
+### Why ELF First?
 
-Turn the MVP into a production-ready system for demanding customers.
+1. Most common target for systems programming
+2. Best DWARF support (GCC, Clang)
+3. Easiest to test (Linux CI runners)
+4. Mach-O/PE can reuse most parsing logic
 
-### 5.2 v1.1.0 Features
+### Why Constant Offsets Only for MVP?
 
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| `suggest` command | Optimal layout recommendations | High |
-| Go language support | Parse Go binaries | Medium |
-| False sharing detection | Flag atomic variables on same cache line | Medium |
-| GitLab integration | GitLab App, MR comments | Medium |
-| Slack integration | Alert notifications | Low |
+1. Covers 90%+ of real-world structs
+2. Expression evaluation is complex and error-prone
+3. Can mark "unknown" offsets without blocking release
+4. Users can still see struct size, alignment, most members
 
-**Milestones:**
-- False sharing detection beta
-- Layout suggestion beta
-- LTO-aware analysis validation
-- Performance and scalability benchmarking under heavy CI load
+### Why Test Infrastructure in Phase 1?
 
-**Exit Criteria:**
-- System remains stable and performant under concurrent CI usage
-- Advanced analyses produce actionable and trusted results for expert users
-
-### 5.3 v1.2.0 Features
-
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| LTO insights | Analyze LTO-optimized binaries | Medium |
-| Custom reporters | Plugin system for output | Low |
-| API v2 | GraphQL API | Low |
-| Mobile app | iOS/Android dashboard | Low |
+1. DWARF has many edge cases discovered via testing
+2. Can't validate correctness without known-good fixtures
+3. Prevents regressions during development
+4. Enables comparison with pahole output
 
 ---
 
-## 6. Phase 5: Business & Enterprise (Post-MVP)
+## Risk Mitigation
 
-### 6.1 Objective
-
-Operationalize the business aspects while preserving a strong developer-centric ethos.
-
-### 6.2 Milestones
-
-- Pricing page and tier definitions
-- Self-hosted deployment option (Helm chart / Docker Compose)
-- SSO, audit logs, and compliance basics (e.g., SOC2 trajectory)
-
-### 6.3 Exit Criteria
-
-- At least a handful of paying customers across target segments (HFT, embedded, games)
-- Clear, repeatable onboarding and support processes
-
----
-
-## 6. Technical Milestones
-
-### 6.1 CLI Milestones
-
-| Version | Date | Milestone |
-|---------|------|-----------|
-| v0.1.0 | Week 6 | Basic inspection working |
-| v0.2.0 | Week 10 | Diff and CI mode |
-| v0.3.0 | Week 14 | Upload to SaaS |
-| v1.0.0 | Week 16 | Full feature set |
-
-### 6.2 SaaS Milestones
-
-| Milestone | Date | Description |
-|-----------|------|-------------|
-| API Alpha | Week 12 | Report upload working |
-| GitHub Integration | Week 14 | PR comments posting |
-| Dashboard Beta | Week 15 | Basic UI functional |
-| GA Launch | Week 16 | Production ready |
-
----
-
-## 7. Resource Requirements
-
-### 7.1 Development Team
-
-| Role | Allocation | Responsibilities |
-|------|------------|------------------|
-| **Lead Engineer** | 100% | CLI development, DWARF parsing |
-| **Backend Engineer** | 50% (Phase 3) | API, database, integrations |
-| **Frontend Engineer** | 50% (Phase 3) | Dashboard UI |
-
-### 7.2 Infrastructure
-
-| Service | Cost (Monthly) | Purpose |
-|---------|----------------|---------|
-| Render (API) | $25-100 | Backend hosting |
-| Render (DB) | $20-50 | PostgreSQL |
-| Vercel | $20 | Frontend hosting |
-| Cloudflare | Free-$20 | CDN, DNS |
-| GitHub | Free | Code hosting, Actions |
-
-**Estimated Monthly Cost**: $65-190
-
----
-
-## 8. Risk Mitigation
-
-### 8.1 Technical Risks
+### Technical Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| DWARF edge cases | High | Medium | Extensive test suite, graceful errors |
-| Large binary performance | Medium | High | Streaming, parallelization |
-| Cross-platform issues | Medium | Medium | CI on all platforms |
+| DWARF edge cases | High | Medium | Extensive test suite, graceful fallback |
+| Large binary performance | Medium | High | Memory mapping, lazy parsing |
+| Cross-platform issues | Medium | Medium | CI on all platforms (Phase 2) |
 
-### 8.2 Schedule Risks
+### Scope Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Scope creep | High | High | Strict phase boundaries |
-| Integration complexity | Medium | Medium | Early GitHub App setup |
-| Performance issues | Low | High | Profiling from Week 1 |
+| Scope creep | High | High | Strict phase boundaries, explicit non-goals |
+| Premature SaaS | Medium | High | Deferred to Phase 4 with prerequisites |
+| pahole comparison | Medium | Medium | Position as "complementary", not "replacement" |
 
 ---
 
-## 9. Definition of Done
+## Definition of Done
 
-### 9.1 Per-Feature Checklist
+### Per-Task
 
-- [ ] Code complete and reviewed
-- [ ] Unit tests passing (>80% coverage)
-- [ ] Integration tests passing
-- [ ] Documentation updated
-- [ ] Performance acceptable
-- [ ] No known critical bugs
+- Code compiles without warnings
+- Tests pass (if applicable)
+- No new clippy warnings
+- Committed to branch
 
-### 9.2 Per-Release Checklist
+### Per-Phase
 
-- [ ] All features complete
-- [ ] Full test suite passing
-- [ ] CHANGELOG updated
-- [ ] Version bumped
-- [ ] Release notes written
-- [ ] Deployed to production
-- [ ] Announcement posted
+- All P0 tasks complete
+- Tests passing
+- README updated
+- Version tagged
+- Release notes written
 
 ---
 
-## Next Steps
+## Version History
 
-→ [API Specification](./09-api-specification.md) - JSON schemas and API contracts
+| Version | Phase | Description |
+|---------|-------|-------------|
+| v0.1.0-alpha | 1 | MVP: ELF + inspect command |
+| v0.2.0-beta | 2 | Cross-platform + diff/check |
+| v0.3.0 | 3 | Advanced analysis |
+| v1.0.0 | 4 | SaaS (if needed) |
 
+---
 
+## Navigation
+
+- [Task Breakdown](./11-task-breakdown.md) - Detailed implementation tasks
+- [Technical Architecture](./04-technical-architecture.md) - System design
+- [Future SaaS Vision](./30-future-saas-vision.md) - Deferred SaaS plans

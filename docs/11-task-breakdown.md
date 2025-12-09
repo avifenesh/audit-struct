@@ -2,81 +2,91 @@
 
 ## Granular Implementation Tasks for struct-audit
 
-**Context**: Solo side project - No team collaboration, no strict timeline. Work at your own pace.
+**Context**: Solo side project. Focus on shipping a working MVP before expanding scope.
 
 ---
 
 ## Priority Guide
 
 - **P0**: MVP must-haves (build first)
-- **P1**: Nice to have (after MVP)
-- **P2**: Future/optional (can skip)
+- **P1**: Post-MVP enhancements
+- **P2**: Future/optional
 
 ---
 
-## Quick Wins (1-2 hours each)
+## Quick Wins (Start Here)
 
-Good for limited time sessions. Builds momentum.
+These can be done in short sessions. Build momentum before tackling complex DWARF parsing.
 
 - [ ] Initialize Rust workspace with `cargo new struct-audit`
 - [ ] Add core dependencies (gimli, object, clap, serde)
-- [ ] Create basic CLI structure with clap
-- [ ] Set up rustfmt and clippy configuration
+- [ ] Set up rustfmt.toml and clippy configuration
 - [ ] Create `.gitignore` for Rust projects
-- [ ] Create basic `StructLayout` and `MemberLayout` structs
-- [ ] Implement simple table output with `comfy-table`
-- [ ] Add `--help` text and examples
+- [ ] Create basic `StructLayout` and `MemberLayout` structs with serde derives
+- [ ] Set up basic CLI structure with clap (`inspect` subcommand skeleton)
+- [ ] Create test binary corpus (simple C/Rust structs)
 
 ---
 
-## Phase 1: Core CLI Development (P0 - MVP Must-Haves)
+## Phase 1: Core CLI MVP (P0)
+
+**Goal**: Ship `struct-audit inspect <binary>` for ELF binaries with constant member offsets.
+
+**Explicit Non-Goals for MVP**:
+- Mach-O/PE support (P1)
+- Expression evaluator for complex offsets (P1)
+- DWARF 5 bitfield handling (P1)
+- Diff command (P1)
+- CI check command (P1)
+- SaaS anything (P2)
 
 ### 1.1 Project Setup
 
-#### Initialize Rust Workspace
-- [ ] Create new Rust project: `cargo new struct-audit`
-- [ ] Configure `Cargo.toml` with workspace settings
-- [ ] Add initial dependencies (gimli, object, clap, serde)
-- [ ] Set up rustfmt and clippy configuration
-- [ ] Create `.gitignore` for Rust projects
+#### Initialize Workspace
+- [ ] Create project: `cargo new struct-audit`
+- [ ] Configure `Cargo.toml`:
+```toml
+[dependencies]
+gimli = "0.28"
+object = "0.32"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+memmap2 = "0.9"
+comfy-table = "7"
+colored = "2"
+thiserror = "1"
+anyhow = "1"
 
-#### Set Up CI Pipeline
-- [ ] Create `.github/workflows/ci.yml`
-- [ ] Configure build matrix (Linux, macOS, Windows)
-- [ ] Add cargo test step
-- [ ] Add cargo clippy step
-- [ ] Add cargo fmt check step
-- [ ] Configure release build workflow
+[dev-dependencies]
+tempfile = "3"
+```
+- [ ] Set up rustfmt and clippy config
+- [ ] Create `.gitignore`
 
 #### Create Project Structure
 ```
 src/
 ├── main.rs           # CLI entry point
 ├── lib.rs            # Library root
-├── cli/
-│   ├── mod.rs
-│   └── commands/     # Command implementations
-├── loader/
-│   ├── mod.rs        # Binary loading
-│   ├── elf.rs
-│   ├── macho.rs
-│   └── pe.rs
+├── cli.rs            # clap definitions
+├── loader.rs         # Binary loading (ELF only for MVP)
 ├── dwarf/
 │   ├── mod.rs        # DWARF parsing
-│   ├── context.rs
-│   ├── types.rs
-│   └── expression.rs
+│   ├── context.rs    # gimli wrapper
+│   └── types.rs      # Type resolution
 ├── analysis/
 │   ├── mod.rs        # Analysis engine
-│   ├── padding.rs
-│   ├── cache.rs
-│   └── metrics.rs
+│   └── padding.rs    # Padding detection
 ├── output/
 │   ├── mod.rs        # Output formatters
-│   ├── table.rs
-│   ├── json.rs
-│   └── markdown.rs
+│   ├── table.rs      # Table output
+│   └── json.rs       # JSON output
 └── error.rs          # Error types
+
+tests/
+├── fixtures/         # Test binaries (C, Rust)
+└── integration/      # Integration tests
 ```
 
 #### Define Core Data Structures
@@ -84,581 +94,308 @@ src/
 - [ ] Create `MemberLayout` struct
 - [ ] Create `LayoutMetrics` struct
 - [ ] Create `PaddingHole` struct
-- [ ] Implement `Display` traits for output
 - [ ] Add serde derives for JSON serialization
+- [ ] Implement `Display` traits
 
 ---
 
-### 1.2 Binary Loading
+### 1.2 Test Infrastructure (Do Early!)
 
-#### Implement Binary Loader Trait
-```rust
-pub trait BinaryLoader {
-    fn load(path: &Path) -> Result<LoadedBinary>;
-    fn get_debug_sections(&self) -> DebugSections;
-}
-```
-- [ ] Define `BinaryLoader` trait
-- [ ] Define `LoadedBinary` struct
-- [ ] Define `DebugSections` struct
-- [ ] Add memory mapping support with `memmap2`
+**Why early**: DWARF edge cases are discovered via testing. Can't validate without test corpus.
+
+#### Create Test Binary Corpus
+- [ ] Create `tests/fixtures/` directory
+- [ ] Write simple C test structs (`test_simple.c`):
+  - Struct with no padding
+  - Struct with internal padding
+  - Struct with tail padding
+  - Nested struct
+- [ ] Write Rust test structs (`test_simple.rs`):
+  - Basic struct
+  - `#[repr(C)]` struct
+  - Struct with Option/enum
+- [ ] Create Makefile/build script to compile test binaries with debug info
+- [ ] Add test binaries to `.gitignore` (compile on demand)
+
+#### Set Up Integration Tests
+- [ ] Create `tests/integration/` directory
+- [ ] Write test that parses simple C struct and validates layout
+- [ ] Write test comparing output against known-good values
+- [ ] Add CI step to run tests
+
+---
+
+### 1.3 Binary Loading (ELF Only)
 
 #### Implement ELF Loader
-- [ ] Parse ELF header using `object` crate
+- [ ] Create `loader.rs` with `load_binary()` function
+- [ ] Use `object` crate to parse ELF header
+- [ ] Memory-map file with `memmap2`
 - [ ] Extract `.debug_info` section
 - [ ] Extract `.debug_abbrev` section
 - [ ] Extract `.debug_str` section
-- [ ] Extract `.debug_line` section (optional)
-- [ ] Handle compressed debug sections (`.zdebug_*`)
-- [ ] Add tests with sample ELF binaries
-
-#### Implement Mach-O Loader
-- [ ] Parse Mach-O header using `object` crate
-- [ ] Handle universal (fat) binaries
-- [ ] Extract `__debug_info` section
-- [ ] Extract other debug sections
-- [ ] Add tests with sample Mach-O binaries
-
-#### Implement PE Loader
-- [ ] Parse PE header using `object` crate
-- [ ] Locate embedded PDB or DWARF sections
-- [ ] Handle separate `.pdb` files (future)
-- [ ] Add tests with sample PE binaries
-
-#### Create Unified Loader
-- [ ] Auto-detect binary format from magic bytes
-- [ ] Create factory function `load_binary(path)`
-- [ ] Add comprehensive error messages
-- [ ] Test cross-platform loading
+- [ ] Handle missing debug info gracefully (clear error message)
+- [ ] Add tests with fixture binaries
 
 ---
 
-### 1.3 DWARF Parsing Foundation
+### 1.4 DWARF Parsing Foundation
 
 #### Initialize gimli Context
-- [ ] Create `DwarfContext` wrapper struct
+- [ ] Create `DwarfContext` wrapper struct in `dwarf/context.rs`
 - [ ] Implement `from_sections()` constructor
 - [ ] Handle endianness detection
 - [ ] Set up abbreviation table loading
 - [ ] Add error handling for malformed DWARF
 
 #### Implement Compilation Unit Iterator
-```rust
-pub fn iter_units(&self) -> impl Iterator<Item = CompilationUnit>
-```
-- [ ] Iterate over `.debug_info` headers
+- [ ] Create `iter_units()` method
 - [ ] Parse CU header (version, address size)
 - [ ] Load abbreviation table for each CU
-- [ ] Handle DWARF 4 vs DWARF 5 differences
 - [ ] Add unit tests
 
-#### Implement DIE Traversal
+#### Implement Struct Finder
 - [ ] Create `find_struct_types()` function
 - [ ] Filter for `DW_TAG_structure_type`
 - [ ] Filter for `DW_TAG_class_type` (C++)
 - [ ] Skip forward declarations (no `DW_AT_byte_size`)
-- [ ] Handle nested types
+- [ ] Skip compiler-generated types (names starting with `__`)
 
 #### Extract Basic Attributes
 - [ ] Implement `get_name()` - resolve `DW_AT_name`
 - [ ] Implement `get_size()` - resolve `DW_AT_byte_size`
-- [ ] Implement `get_alignment()` - resolve `DW_AT_alignment`
+- [ ] Implement `get_alignment()` - resolve `DW_AT_alignment` (optional attribute)
 - [ ] Handle string table lookups
-- [ ] Add source location extraction (file, line)
+- [ ] Add source location extraction (file, line) - optional for MVP
 
 ---
 
-### 1.4 Member Extraction
+### 1.5 Member Extraction (Constant Offsets Only)
+
+**MVP Scope**: Only handle `DW_AT_data_member_location` as constant integer. Report "offset unavailable" for expression-based offsets.
 
 #### Parse DW_TAG_member
 - [ ] Iterate children of struct DIE
 - [ ] Filter for `DW_TAG_member` tags
 - [ ] Extract member name
 - [ ] Extract member type reference
-- [ ] Handle anonymous members
+- [ ] Handle anonymous members (generate synthetic name)
 
 #### Resolve Constant Offsets
 - [ ] Parse `DW_AT_data_member_location`
-- [ ] Handle constant integer values
-- [ ] Handle `DW_FORM_data*` forms
+- [ ] Handle constant integer values (`DW_FORM_data*`, `DW_FORM_udata`, `DW_FORM_sdata`)
+- [ ] **For expression-based offsets**: Log warning, mark offset as `None`
 - [ ] Add tests with simple structs
 
-#### Implement Type Chain Resolution
-```rust
-pub fn resolve_type_size(type_ref: TypeOffset) -> Result<u64>
-```
+#### Implement Basic Type Resolution
 - [ ] Follow `DW_AT_type` references
-- [ ] Handle `DW_TAG_typedef`
-- [ ] Handle `DW_TAG_const_type`
-- [ ] Handle `DW_TAG_pointer_type`
-- [ ] Handle `DW_TAG_array_type`
-- [ ] Handle `DW_TAG_base_type`
+- [ ] Handle `DW_TAG_base_type` (get size directly)
+- [ ] Handle `DW_TAG_pointer_type` (size = address size)
+- [ ] Handle `DW_TAG_typedef` (follow chain)
+- [ ] Handle `DW_TAG_const_type` (follow chain)
+- [ ] Handle `DW_TAG_array_type` (element size × count)
 - [ ] Cache resolved types for performance
-
-#### Handle Nested Structs
-- [ ] Detect nested struct definitions
-- [ ] Generate qualified names (`Outer::Inner`)
-- [ ] Handle anonymous nested structs
-- [ ] Add tests with complex nesting
-
-#### Handle Inheritance (C++)
-- [ ] Parse `DW_TAG_inheritance` DIEs
-- [ ] Extract base class offset
-- [ ] Handle virtual inheritance markers
-- [ ] Add tests with C++ class hierarchies
+- [ ] **Skip for MVP**: Complex template types, report size as "unknown"
 
 ---
 
-### 1.5 Expression Evaluator
+### 1.6 Padding Detection
 
-#### Implement Location Expression Parser
-- [ ] Create `ExpressionEvaluator` struct
-- [ ] Parse `DW_FORM_exprloc` data
-- [ ] Set up evaluation stack
+#### Implement Padding Algorithm
+- [ ] Sort members by offset
+- [ ] Detect gaps between consecutive members
+- [ ] Detect tail padding (struct size - end of last member)
+- [ ] Create `PaddingHole` records
+- [ ] Calculate total padding bytes and percentage
 
-#### Implement Common Operations
-- [ ] `DW_OP_constu` - push unsigned constant
-- [ ] `DW_OP_consts` - push signed constant
-- [ ] `DW_OP_plus_uconst` - add constant
-- [ ] `DW_OP_plus` - add top two stack values
-- [ ] `DW_OP_minus` - subtract
-- [ ] `DW_OP_addr` - push address
-
-#### Handle Complex Cases
-- [ ] Virtual inheritance offsets
-- [ ] Multiple inheritance scenarios
-- [ ] Return error for runtime-only operations
-- [ ] Add comprehensive tests
-
-#### Integrate with Member Parsing
-- [ ] Update `get_member_offset()` to use evaluator
-- [ ] Fall back gracefully on unsupported expressions
-- [ ] Log warnings for skipped members
+#### Implement Cache Line Analysis
+- [ ] Calculate cache lines spanned (size / 64, rounded up)
+- [ ] Calculate density (useful bytes / total cache line bytes)
+- [ ] Detect members straddling cache line boundaries
+- [ ] Make cache line size configurable (default 64)
 
 ---
 
-### 1.6 Output Formatting
+### 1.7 Output Formatting
 
 #### Implement Table Formatter
 - [ ] Use `comfy-table` crate
-- [ ] Create layout table with columns: Offset, Size, Type, Field
-- [ ] Add padding hole rows with visual indicator
+- [ ] Create layout table: Offset | Size | Type | Field
+- [ ] Add padding hole rows with visual indicator (`[N bytes]  PAD`)
 - [ ] Add cache line boundary markers
-- [ ] Colorize output with `colored` crate
-- [ ] Show struct summary (size, padding %, cache lines)
+- [ ] Colorize with `colored` crate (padding in yellow, violations in red)
+- [ ] Show struct summary header (name, size, padding %, cache lines)
 
 #### Implement JSON Formatter
-- [ ] Define JSON schema (see API spec)
+- [ ] Define output schema (see API spec doc)
 - [ ] Implement `Serialize` for all types
 - [ ] Add `--output json` flag
-- [ ] Pretty-print option
-- [ ] Add tests for JSON validity
-
-#### Implement Markdown Formatter
-- [ ] Create markdown table output
-- [ ] Add summary section
-- [ ] Suitable for PR comments
-- [ ] Add `--output markdown` flag
+- [ ] Add `--pretty` flag for indented output
 
 #### Create CLI Interface
 ```bash
 struct-audit inspect <binary> [OPTIONS]
-  --filter <pattern>    Filter structs by name
-  --output <format>     Output format (table, json, markdown)
+  --filter <pattern>    Filter structs by name (substring match)
+  --output <format>     Output format: table (default), json
   --no-color            Disable colored output
-  --cache-line <size>   Cache line size (default: 64)
+  --cache-line <size>   Cache line size in bytes (default: 64)
 ```
-- [ ] Implement `inspect` command with clap
-- [ ] Add filtering by struct name (glob/regex)
-- [ ] Add output format selection
-- [ ] Add help text and examples
-
-#### Testing and Polish
-- [ ] Create test binaries in multiple languages
-- [ ] Compare output with pahole
-- [ ] Performance benchmarks
-- [ ] Fix edge cases
-- [ ] Write user documentation
+- [ ] Implement with clap derive macros
+- [ ] Add `--help` text with examples
+- [ ] Add `--version` flag
 
 ---
 
-## Phase 2: Advanced Analysis & Diffing (P1 - Nice to Have)
+### 1.8 MVP Polish
 
-### 2.1 DWARF 5 Bitfields
+#### Error Handling
+- [ ] Clear error messages for common issues:
+  - Binary not found
+  - Not an ELF file
+  - No debug info (suggest compiling with `-g`)
+  - Malformed DWARF
+- [ ] Exit code 0 on success, 1 on error
 
-#### Detect DWARF Version
-- [ ] Read version from CU header
-- [ ] Create version-aware parsing context
-- [ ] Add version to output metadata
+#### Documentation
+- [ ] Write README with:
+  - Installation (`cargo install struct-audit`)
+  - Quick start example
+  - Output explanation
+- [ ] Add `--help` examples
 
-#### Implement DWARF 4 Bitfield Handling
-- [ ] Parse `DW_AT_bit_offset`
-- [ ] Parse `DW_AT_bit_size`
-- [ ] Handle endianness conversion
-- [ ] Calculate absolute bit position
-
-#### Implement DWARF 5 Bitfield Handling
-- [ ] Parse `DW_AT_data_bit_offset`
-- [ ] Simpler calculation (endianness-independent)
-- [ ] Fall back to DWARF 4 style if needed
-
-#### Add Bitfield Tests
-- [ ] Create test structs with bitfields
-- [ ] Test on GCC, Clang, MSVC output
-- [ ] Test mixed bitfield/regular fields
-- [ ] Verify against manual calculation
+#### CI Setup
+- [ ] Create `.github/workflows/ci.yml`
+- [ ] Build on Linux only (MVP)
+- [ ] Run `cargo test`
+- [ ] Run `cargo clippy`
+- [ ] Run `cargo fmt --check`
 
 ---
 
-### 2.2 Diff Algorithm
+### 1.9 MVP Release Checklist
 
-#### Implement Struct Matching
-```rust
-pub fn match_structs(old: &[StructLayout], new: &[StructLayout]) -> StructDiff
-```
-- [ ] Match by fully-qualified name
-- [ ] Handle renamed structs (heuristic)
-- [ ] Identify added structs
-- [ ] Identify removed structs
+**v0.1.0-alpha**:
+- [ ] All Phase 1 tasks complete
+- [ ] Tests passing
+- [ ] README written
+- [ ] `cargo publish --dry-run` succeeds
+- [ ] Tag release
 
-#### Implement Member Diffing
-- [ ] Compare member lists
-- [ ] Detect added members
-- [ ] Detect removed members
-- [ ] Detect reordered members
-- [ ] Detect type changes
-
-#### Calculate Deltas
-- [ ] Size delta (bytes)
-- [ ] Padding delta (bytes and %)
-- [ ] Cache line delta
-- [ ] Density delta
-
-#### Create Diff Output
-- [ ] Table format showing changes
-- [ ] JSON format for CI parsing
-- [ ] Summary statistics
-- [ ] Exit code based on regression
+**Success Criteria**:
+- [ ] Parses test binaries without panics
+- [ ] Output matches manual inspection for test structs
+- [ ] Runs on real-world binary (your own Rust project)
 
 ---
 
-### 2.3 CI Mode
+## Phase 2: Enhanced CLI (P1 - After MVP)
 
-#### Implement Budget Configuration
-```yaml
-budgets:
-  - name: "my_app::Order"
-    max_size: 64
+Only start Phase 2 after MVP is shipped and used on real projects.
+
+### 2.1 Expression Evaluator
+
+For C++ virtual inheritance and complex layouts.
+
+- [ ] Create `ExpressionEvaluator` struct
+- [ ] Implement `DW_OP_constu`, `DW_OP_plus_uconst`
+- [ ] Implement `DW_OP_plus`, `DW_OP_minus`
+- [ ] Return error for runtime-only ops (`DW_OP_deref`, `DW_OP_reg*`)
+- [ ] Integrate with member offset parsing
+- [ ] Add tests with C++ binaries
+
+### 2.2 DWARF 5 Bitfields
+
+- [ ] Detect DWARF version from CU header
+- [ ] Implement DWARF 4: `DW_AT_bit_offset` + `DW_AT_bit_size`
+- [ ] Implement DWARF 5: `DW_AT_data_bit_offset`
+- [ ] Add bitfield tests
+
+### 2.3 Cross-Platform Support
+
+- [ ] Implement Mach-O loader (macOS)
+- [ ] Implement PE loader (Windows)
+- [ ] Handle compressed debug sections (`.zdebug_*`)
+- [ ] Add CI matrix for Linux/macOS/Windows
+
+### 2.4 Diff Command
+
+```bash
+struct-audit diff <old-binary> <new-binary>
 ```
-- [ ] Define YAML schema
-- [ ] Parse with `serde_yaml`
-- [ ] Support exact names and glob patterns
-- [ ] Validate configuration
+- [ ] Match structs by fully-qualified name
+- [ ] Detect added/removed/changed structs
+- [ ] Calculate size and padding deltas
+- [ ] Flag cache line boundary changes
+- [ ] Return exit code 1 on regression
 
-#### Implement Budget Evaluation
-- [ ] Match structs to budgets
-- [ ] Check size constraints
-- [ ] Check padding constraints
-- [ ] Check cache line constraints
-- [ ] Generate violation report
+### 2.5 CI Check Command
 
-#### Implement `check` Command
 ```bash
 struct-audit check <binary> --config .struct-audit.yaml
 ```
-- [ ] Load configuration file
-- [ ] Run analysis
-- [ ] Evaluate budgets
+- [ ] Parse YAML config with `serde_yaml`
+- [ ] Support exact names and glob patterns
+- [ ] Evaluate size, padding %, cache line budgets
 - [ ] Return exit code 0 (pass) or 1 (fail)
-- [ ] Machine-readable output option
+- [ ] Machine-readable JSON output
 
-#### Create GitHub Action
-```yaml
-- uses: struct-audit/action@v1
-  with:
-    binary: ./target/release/my_app
-    config: .struct-audit.yaml
-```
-- [ ] Create action.yml
+### 2.6 GitHub Action
+
+- [ ] Create `action.yml`
 - [ ] Docker-based action
-- [ ] Input parameters
+- [ ] Input parameters (binary path, config path)
 - [ ] Output annotations
-- [ ] PR comment integration
 
 ---
 
-### 2.4 Testing Strategy (P0 - Before Release)
+## Phase 3: Advanced Analysis (P1)
 
-#### Unit Tests
-- [ ] Test DWARF parsing with sample binaries
-- [ ] Test type resolution for all type kinds
-- [ ] Test expression evaluator operations
-- [ ] Test output formatters
+### 3.1 False Sharing Detection
 
-#### Integration Tests
-- [ ] Create test binaries in C, C++, Rust
-- [ ] Compare output with pahole for accuracy
-- [ ] Test cross-platform (Linux, macOS, Windows)
-
-#### Performance Benchmarks
-- [ ] Benchmark with large binaries (>100MB)
-- [ ] Profile memory usage
-- [ ] Set baseline performance metrics
-
----
-
-### 2.5 Polish & Documentation
-
-#### Performance Optimization
-- [ ] Profile with large binaries
-- [ ] Parallelize CU processing
-- [ ] Optimize type resolution caching
-- [ ] Reduce memory allocations
-
-#### Error Handling
-- [ ] Graceful handling of malformed DWARF
-- [ ] Clear error messages
-- [ ] Suggestions for common issues
-- [ ] Debug logging option
-
-#### Documentation
-- [ ] README with quick start
-- [ ] CLI help text
-- [ ] Configuration reference
-- [ ] Troubleshooting guide
-- [ ] Example configurations
-
-#### Release v0.2.0
-- [ ] Update CHANGELOG
-- [ ] Tag release
-- [ ] Publish to crates.io
-- [ ] Announce on social media
-
----
-
-## Phase 3: SaaS Platform MVP (P1 - Optional, Only if Monetizing)
-
-### 3.0 Security Tasks (P0 - Before SaaS Launch)
-
-#### Security Audit
-- [ ] Review OAuth implementation
-- [ ] Audit API authentication/authorization
-- [ ] Review input validation
-- [ ] Check for injection vulnerabilities
-
-#### Dependency Security
-- [ ] Run `cargo audit` for vulnerabilities
-- [ ] Set up Dependabot or similar
-- [ ] Review third-party dependencies
-
-#### API Security
-- [ ] Rate limiting implementation
-- [ ] Request size limits
-- [ ] CORS configuration
-- [ ] Secure headers (CSP, HSTS, etc.)
-
----
-
-### 3.1 API Backend
-
-#### Backend Setup
-- [ ] Initialize Axum project
-- [ ] Set up project structure
-- [ ] Configure environment variables
-- [ ] Set up logging (tracing)
-- [ ] Create health check endpoint
-
-#### Database Setup
-- [ ] Design PostgreSQL schema
-- [ ] Create migrations (sqlx)
-- [ ] Implement connection pooling
-- [ ] Create repository layer
-
-#### Authentication
-- [ ] GitHub OAuth flow
-- [ ] JWT token generation
-- [ ] Session management
-- [ ] API key generation
-
-#### Report Upload API
-- [ ] `POST /api/v1/reports` endpoint
-- [ ] Request validation
-- [ ] Struct deduplication
-- [ ] Store in database
-- [ ] Return report ID
-
-#### Query APIs
-- [ ] `GET /api/v1/repos` - list repositories
-- [ ] `GET /api/v1/repos/:id/structs` - list structs
-- [ ] `GET /api/v1/repos/:id/structs/:name/history` - struct history
-- [ ] Pagination support
-
----
-
-### 3.2 GitHub Integration
-
-#### GitHub App Setup
-- [ ] Register GitHub App
-- [ ] Configure permissions
-- [ ] Set up webhook URL
-- [ ] Handle installation events
-
-#### Webhook Handler
-- [ ] Receive PR events
-- [ ] Verify webhook signature
-- [ ] Parse event payload
-- [ ] Trigger analysis
-
-#### PR Comments
-- [ ] Generate markdown report
-- [ ] Post comment via GitHub API
-- [ ] Update existing comments
-- [ ] Handle rate limits
-
-#### Check Status
-- [ ] Create check run
-- [ ] Update check status
-- [ ] Add annotations
-- [ ] Link to dashboard
-
----
-
-### 3.3 Frontend Dashboard
-
-#### Frontend Setup
-- [ ] Initialize Next.js project
-- [ ] Configure Tailwind CSS
-- [ ] Set up authentication (NextAuth)
-- [ ] Create layout components
-
-#### Dashboard Pages
-- [ ] Home/overview page
-- [ ] Repository list
-- [ ] Struct list view
-- [ ] Struct detail/history view
-- [ ] Settings page
-
-#### Visualizations
-- [ ] Trend charts (Recharts)
-- [ ] Struct layout diagram
-- [ ] Health score indicator
-- [ ] Sparklines for history
-
-#### Deployment
-- [ ] Deploy backend to Render
-- [ ] Deploy frontend to Vercel/Render
-- [ ] Configure domain
-- [ ] Set up SSL
-- [ ] Configure monitoring
-
-#### Launch
-- [ ] Final testing
-- [ ] Write launch blog post
-- [ ] Announce on Hacker News
-- [ ] Monitor for issues
-
----
-
-## Phase 4: Advanced Capabilities (P2 - Optional)
-
-### 4.1 False Sharing Detection
-
-#### Implement Atomic Type Detection
-- [ ] Detect `std::atomic` types in member types
-- [ ] Detect Rust `AtomicU64`, `AtomicBool`, etc.
-- [ ] Mark members as atomic in `MemberInfo`
-
-#### Implement Cache Line Collision Detection
-- [ ] Calculate cache line boundaries for atomic members
-- [ ] Detect when multiple atomics share same cache line
-- [ ] Generate false sharing warnings
-
-#### Add False Sharing Output
+- [ ] Detect atomic types in member type names
+- [ ] Group atomics by cache line
+- [ ] Flag when multiple atomics share cache line
 - [ ] Add `--detect-false-sharing` flag
-- [ ] Create warning output format
-- [ ] Include suggestions for padding/alignment
+- [ ] Generate recommendations
 
-### 4.2 Optimization Suggestions
+### 3.2 Optimization Suggestions
 
-#### Implement Bin-Packing Heuristic
-- [ ] Collect member sizes and alignments
-- [ ] Implement greedy bin-packing algorithm
-- [ ] Calculate optimal field order
-
-#### Create `suggest` Command
-- [ ] Implement `struct-audit suggest <binary> --struct <name>`
-- [ ] Generate optimization recommendations
+```bash
+struct-audit suggest <binary> --struct <name>
+```
+- [ ] Implement greedy bin-packing for optimal field order
+- [ ] Show before/after comparison
 - [ ] Calculate potential savings
-- [ ] Handle FFI/serialization constraints
-- [ ] Add warnings for breaking changes
+- [ ] Warn about FFI/serialization implications
 
-### 4.3 Go Language Support
+### 3.3 C++ Inheritance Support
 
-#### Research Go DWARF Format
-- [ ] Study Go DWARF output differences
-- [ ] Document Go-specific type representations
-- [ ] Test with Go binaries (`-gcflags=-dwarf`)
+- [ ] Parse `DW_TAG_inheritance` DIEs
+- [ ] Extract base class offset
+- [ ] Handle multiple inheritance
+- [ ] Handle virtual inheritance (requires expression evaluator)
 
-#### Implement Go Type Resolution
-- [ ] Handle Go slice types
-- [ ] Handle Go map types
-- [ ] Support Go interface types
-- [ ] Handle Go naming conventions
+---
 
-#### Add Go-Specific Tests
-- [ ] Create test Go binaries
-- [ ] Verify layout accuracy
-- [ ] Test edge cases
+## Phase 4: SaaS Platform (P2 - Only If Monetizing)
 
-### 4.4 LTO Insights
+**Deferred**. See `docs/30-future-saas-vision.md` for archived plans.
 
-#### Detect LTO Builds
-- [ ] Detect LTO markers in binaries
-- [ ] Tag reports with LTO status
-
-#### Compare Pre/Post LTO Layouts
-- [ ] Support comparing LTO vs non-LTO builds
-- [ ] Calculate LTO savings
-- [ ] Identify inlined structs
-
-#### Add LTO Analysis Output
-- [ ] Create LTO comparison format
-- [ ] Show optimization effects
-- [ ] Highlight structs optimized by LTO
-
-### 4.5 GitLab Integration
-
-#### Register GitLab App
-- [ ] Create GitLab App
-- [ ] Configure permissions
-- [ ] Set up webhook URL
-
-#### Implement GitLab Webhook Handler
-- [ ] Handle Merge Request events
-- [ ] Verify webhook signatures
-- [ ] Parse event payload
-
-#### Post MR Comments
-- [ ] Generate markdown report
-- [ ] Post comment via GitLab API
-- [ ] Update existing comments
-
-#### Update Pipeline Status
-- [ ] Create pipeline status
-- [ ] Update status on analysis complete
-- [ ] Handle GitLab API differences
+Do not start until:
+1. CLI v0.2.0 is stable
+2. CLI has real users (not just you)
+3. You feel recurring pain from lack of historical tracking
+4. You're willing to maintain hosted infrastructure
 
 ---
 
 ## Task Tracking
 
-Use this checklist format to track progress:
-
 ```
 - [ ] Not started
 - [~] In progress
 - [x] Complete
-- [-] Blocked/Cancelled
+- [-] Skipped/Cancelled
 ```
 
 ---
@@ -667,27 +404,45 @@ Use this checklist format to track progress:
 
 Each task is complete when:
 
-1. ✅ Code is written and compiles
-2. ✅ Unit tests pass
-3. ✅ Code is reviewed (self or peer)
-4. ✅ Documentation updated if needed
-5. ✅ No new clippy warnings
-6. ✅ Committed to feature branch
+1. Code compiles without warnings
+2. Tests pass (if applicable)
+3. No new clippy warnings
+4. Committed to branch
+
+Each phase is complete when:
+
+1. All P0 tasks in phase complete
+2. README updated
+3. Version bumped
+4. Tag created
+
+---
+
+## Quick Reference: What's In vs Out for MVP
+
+| Feature | MVP (v0.1.0) | Post-MVP |
+|---------|--------------|----------|
+| ELF binaries | Yes | - |
+| Mach-O/PE | No | v0.2.0 |
+| Constant member offsets | Yes | - |
+| Expression-based offsets | No (show "unknown") | v0.2.0 |
+| Basic type resolution | Yes | - |
+| Complex templates | No (show "unknown") | v0.2.0 |
+| Padding detection | Yes | - |
+| Cache line analysis | Yes | - |
+| Table output | Yes | - |
+| JSON output | Yes | - |
+| `inspect` command | Yes | - |
+| `diff` command | No | v0.2.0 |
+| `check` command | No | v0.2.0 |
+| Bitfields | No | v0.2.0 |
+| False sharing | No | v0.3.0 |
+| SaaS | No | TBD |
 
 ---
 
 ## Navigation
 
-← [Future Roadmap](./10-future-roadmap.md)
-
----
-
-## Quick Links
-
-| Document | Description |
-|----------|-------------|
-| [README](./README.md) | Documentation overview |
-| [Technical Architecture](./04-technical-architecture.md) | System design |
-| [Implementation Roadmap](./08-implementation-roadmap.md) | Timeline and milestones |
-| [API Specification](./09-api-specification.md) | JSON schemas and endpoints |
-
+- [Implementation Roadmap](./08-implementation-roadmap.md) - Phase timeline
+- [Technical Architecture](./04-technical-architecture.md) - System design
+- [DWARF Deep Dive](./05-dwarf-technical-deep-dive.md) - Parsing details
