@@ -2,15 +2,25 @@
 
 ## Granular Implementation Tasks for struct-audit
 
+**Context**: Solo side project - No team collaboration, no strict timeline. Work at your own pace.
+
+---
+
+## Priority Guide
+
+- **P0**: MVP must-haves (build first)
+- **P1**: Nice to have (after MVP)
+- **P2**: Future/optional (can skip)
+
 ---
 
 ## Overview
 
-This document breaks down the implementation roadmap into specific, actionable tasks. Each task is sized for approximately 1-4 hours of focused work.
+This document breaks down the implementation roadmap into specific, actionable tasks. Each task is sized for approximately 1-4 hours of focused work. Tasks are organized by priority rather than strict timeline.
 
 ---
 
-## Phase 1: Core CLI Development (Weeks 1-6)
+## Phase 1: Core CLI Development (P0 - MVP Must-Haves)
 
 ### Week 1: Project Setup
 
@@ -263,7 +273,7 @@ struct-audit inspect <binary> [OPTIONS]
 
 ---
 
-## Phase 2: Advanced Analysis & Diffing (Weeks 7-10)
+## Phase 2: Advanced Analysis & Diffing (P1 - Nice to Have)
 
 ### Week 7: DWARF 5 Bitfields
 
@@ -397,7 +407,7 @@ struct-audit check <binary> --config .struct-audit.yaml
 
 ---
 
-## Phase 3: SaaS Platform MVP (Weeks 11-16)
+## Phase 3: SaaS Platform MVP (P1 - Optional, Only if Monetizing)
 
 ### Weeks 11-12: API Backend
 
@@ -496,6 +506,97 @@ struct-audit check <binary> --config .struct-audit.yaml
 - [ ] Write launch blog post
 - [ ] Announce on Hacker News
 - [ ] Monitor for issues
+
+---
+
+## Phase 4: Advanced Capabilities (P2 - Optional)
+
+### False Sharing Detection
+
+#### 16.1 Implement Atomic Type Detection
+- [ ] Detect `std::atomic` types in member types
+- [ ] Detect Rust `AtomicU64`, `AtomicBool`, etc.
+- [ ] Mark members as atomic in `MemberInfo`
+
+#### 16.2 Implement Cache Line Collision Detection
+- [ ] Calculate cache line boundaries for atomic members
+- [ ] Detect when multiple atomics share same cache line
+- [ ] Generate false sharing warnings
+
+#### 16.3 Add False Sharing Output
+- [ ] Add `--detect-false-sharing` flag
+- [ ] Create warning output format
+- [ ] Include suggestions for padding/alignment
+
+### Optimization Suggestions
+
+#### 17.1 Implement Bin-Packing Heuristic
+- [ ] Collect member sizes and alignments
+- [ ] Implement greedy bin-packing algorithm
+- [ ] Calculate optimal field order
+
+#### 17.2 Create `suggest` Command
+- [ ] Implement `struct-audit suggest <binary> --struct <name>`
+- [ ] Generate optimization recommendations
+- [ ] Calculate potential savings
+- [ ] Handle FFI/serialization constraints
+- [ ] Add warnings for breaking changes
+
+### Go Language Support
+
+#### 18.1 Research Go DWARF Format
+- [ ] Study Go DWARF output differences
+- [ ] Document Go-specific type representations
+- [ ] Test with Go binaries (`-gcflags=-dwarf`)
+
+#### 18.2 Implement Go Type Resolution
+- [ ] Handle Go slice types
+- [ ] Handle Go map types
+- [ ] Support Go interface types
+- [ ] Handle Go naming conventions
+
+#### 18.3 Add Go-Specific Tests
+- [ ] Create test Go binaries
+- [ ] Verify layout accuracy
+- [ ] Test edge cases
+
+### LTO Insights
+
+#### 19.1 Detect LTO Builds
+- [ ] Detect LTO markers in binaries
+- [ ] Tag reports with LTO status
+
+#### 19.2 Compare Pre/Post LTO Layouts
+- [ ] Support comparing LTO vs non-LTO builds
+- [ ] Calculate LTO savings
+- [ ] Identify inlined structs
+
+#### 19.3 Add LTO Analysis Output
+- [ ] Create LTO comparison format
+- [ ] Show optimization effects
+- [ ] Highlight structs optimized by LTO
+
+### GitLab Integration
+
+#### 20.1 Register GitLab App
+- [ ] Create GitLab App
+- [ ] Configure permissions
+- [ ] Set up webhook URL
+
+#### 20.2 Implement GitLab Webhook Handler
+- [ ] Handle Merge Request events
+- [ ] Verify webhook signatures
+- [ ] Parse event payload
+
+#### 20.3 Post MR Comments
+- [ ] Generate markdown report
+- [ ] Post comment via GitLab API
+- [ ] Update existing comments
+
+#### 20.4 Update Pipeline Status
+- [ ] Create pipeline status
+- [ ] Update status on analysis complete
+- [ ] Handle GitLab API differences
 
 ---
 
