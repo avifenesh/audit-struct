@@ -206,7 +206,7 @@ The proposed Open Core model aligns with industry standards:
 │                                                              │
 │   ┌─────────────────────────────────────────────────────┐   │
 │   │  1. FREE CLI                                        │   │
-│   │     Superior to pahole, easy install                │   │
+│   │     Modern UX, CI-native, cross-platform            │   │
 │   │     cargo install struct-audit                      │   │
 │   └──────────────────────┬──────────────────────────────┘   │
 │                          ▼                                   │
