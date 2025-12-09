@@ -36,7 +36,7 @@
 
 ### Objective
 
-Ship `struct-audit inspect <binary>` for ELF binaries. Match pahole accuracy for simple structs while providing better UX.
+Ship `struct-audit inspect <binary>` for ELF binaries with accurate layout analysis and modern developer UX.
 
 ### Scope
 
@@ -214,7 +214,7 @@ Add detection and optimization features for power users.
 1. DWARF has many edge cases discovered via testing
 2. Can't validate correctness without known-good fixtures
 3. Prevents regressions during development
-4. Enables comparison with pahole output
+4. Enables validation against manually-inspected layouts
 
 ---
 
@@ -234,7 +234,7 @@ Add detection and optimization features for power users.
 |------|------------|--------|------------|
 | Scope creep | High | High | Strict phase boundaries, explicit non-goals |
 | Premature SaaS | Medium | High | Deferred to Phase 4 with prerequisites |
-| pahole comparison | Medium | Medium | Position as "complementary", not "replacement" |
+| Feature parity pressure | Medium | Medium | Focus on unique value (CI, tracking), not feature matching |
 
 ---
 

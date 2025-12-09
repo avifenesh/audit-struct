@@ -39,8 +39,6 @@ Developers currently rely on a **patchwork of standalone utilities** and IDE plu
 
 > *"pahole provides a snapshot at a specific moment in time but lacks any mechanism to track the evolution of a struct over weeks or months."*
 
-**Positioning Note**: struct-audit complements pahole rather than replacing it. pahole is mature and handles many edge cases. struct-audit adds CI integration and historical tracking that pahole lacks.
-
 ---
 
 ### 2.2 The Modern CLI: ddbug
@@ -208,7 +206,7 @@ The proposed Open Core model aligns with industry standards:
 │                                                              │
 │   ┌─────────────────────────────────────────────────────┐   │
 │   │  1. FREE CLI                                        │   │
-│   │     Complements pahole with CI/tracking             │   │
+│   │     Modern UX, CI-native, cross-platform            │   │
 │   │     cargo install struct-audit                      │   │
 │   └──────────────────────┬──────────────────────────────┘   │
 │                          ▼                                   │

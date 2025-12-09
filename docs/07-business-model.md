@@ -122,9 +122,9 @@
 │  STAGE 1: WIN THE DEVELOPER                                     │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │  • Release CLI as open source                            │   │
-│  │  • Complements pahole with CI/tracking features          │   │
+│  │  • Modern UX with colorized, structured output           │   │
 │  │  • Easy install: cargo install struct-audit              │   │
-│  │  • Colorized output, better UX                           │   │
+│  │  • CI-native with budget enforcement                     │   │
 │  │  • Cross-platform (macOS, Windows, Linux)                │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                          │                                      │
@@ -156,7 +156,7 @@
 - [ ] Publish CLI on crates.io
 - [ ] Write launch blog post: "Why Memory Layout Matters"
 - [ ] Submit to Hacker News, Reddit r/rust, r/cpp
-- [ ] Create usage examples showing CLI + pahole complementary workflow
+- [ ] Create usage examples and tutorials for common workflows
 - [ ] Reach out to Rust/C++ influencers
 
 **Phase 2: Content Marketing (Months 3-6)**
