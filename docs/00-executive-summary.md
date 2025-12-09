@@ -80,13 +80,16 @@ This is what Codecov did for test coverage—making an invisible metric visible 
 
 ---
 
-## Implementation Timeline
+## Implementation Phases
 
-| Phase | Duration | Deliverable |
-|-------|----------|-------------|
-| **Phase 1** | Weeks 1-6 | Core CLI with layout visualization |
-| **Phase 2** | Weeks 7-10 | Diff analysis and CI integration |
-| **Phase 3** | Weeks 11-16 | SaaS MVP with dashboards |
+> Solo side project. No fixed calendar deadlines. Focus on shipping MVP before expanding scope.
+
+| Phase | Version | Deliverable |
+|-------|---------|-------------|
+| **Phase 1** | v0.1.0 | Core CLI with layout visualization |
+| **Phase 2** | v0.2.0 | Diff analysis and CI integration |
+| **Phase 3** | v0.3.0 | Advanced analysis (false sharing, suggestions) |
+| **Phase 4** | v1.0.0 | SaaS platform (deferred until prerequisites met) |
 
 ---
 

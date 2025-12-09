@@ -40,7 +40,7 @@ This documentation provides a comprehensive specification for building **struct-
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
-| [08-implementation-roadmap.md](./08-implementation-roadmap.md) | Phased development plan with milestones (Phases 1-5) | Engineering, PM |
+| [08-implementation-roadmap.md](./08-implementation-roadmap.md) | Phased development plan with milestones (Phases 1-4) | Engineering, PM |
 | [10-future-roadmap.md](./10-future-roadmap.md) | Advanced features and long-term vision | Everyone |
 | [11-task-breakdown.md](./11-task-breakdown.md) | Granular task list with priorities (P0/P1/P2) | Engineering |
 | [task-breakdown-analysis.md](./task-breakdown-analysis.md) | Task breakdown comparison and recommendations | Engineering |
@@ -103,13 +103,12 @@ Start with:
 
 ### Timeline (Solo Side Project - No Strict Deadlines)
 
-| Phase | Priority | Deliverable |
-|-------|----------|-------------|
-| **Phase 1** | P0 (MVP) | Core CLI (v0.1.0) |
-| **Phase 2** | P1 | Diff + CI mode (v0.2.0) |
-| **Phase 3** | P1 (Optional) | SaaS MVP (v1.0.0) |
-| **Phase 4** | P2 (Optional) | Advanced features (v1.1.0+) |
-| **Phase 5** | P2 (Optional) | Business & Enterprise |
+| Phase | Version | Deliverable |
+|-------|---------|-------------|
+| **Phase 1** | v0.1.0 | Core CLI (MVP) |
+| **Phase 2** | v0.2.0 | Diff + CI mode |
+| **Phase 3** | v0.3.0 | Advanced analysis |
+| **Phase 4** | v1.0.0 | SaaS platform (deferred) |
 
 ---
 
