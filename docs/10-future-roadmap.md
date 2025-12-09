@@ -412,5 +412,10 @@ The roadmap balances:
 | [08-implementation-roadmap.md](./08-implementation-roadmap.md) | Development plan |
 | [09-api-specification.md](./09-api-specification.md) | API contracts |
 | [10-future-roadmap.md](./10-future-roadmap.md) | Long-term vision |
+| [11-task-breakdown.md](./11-task-breakdown.md) | Implementation tasks |
 
+---
 
+## Next Steps
+
+→ [Task Breakdown](./11-task-breakdown.md) - Detailed implementation tasks with priorities

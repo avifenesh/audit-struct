@@ -594,6 +594,241 @@ fn check_budget(
 
 ---
 
+## 7. False Sharing Detection
+
+### 7.1 What is False Sharing?
+
+**False sharing** occurs when two independent variables, updated by different threads, reside on the same cache line. This causes CPU cores to "fight" over cache line ownership, stalling execution even though they're accessing different data.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    False Sharing Problem                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Cache Line (64 bytes)                                          │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  atomic_a (Core 0 writes)  │  atomic_b (Core 1 writes)    │ │
+│  │  [████████]                │  [████████]                  │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  When Core 0 writes to atomic_a:                                │
+│    → Invalidates entire cache line on Core 1                    │
+│    → Core 1 must re-fetch just to read atomic_b                 │
+│    → PERFORMANCE DISASTER for concurrent code                   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 7.2 Detection Algorithm
+
+**Goal**: Identify when multiple atomic/lock-free variables share a cache line.
+
+```rust
+pub struct FalseSharingWarning {
+    pub struct_name: String,
+    pub cache_line: u64,
+    pub atomics: Vec<AtomicMember>,
+    pub severity: Severity,
+}
+
+pub struct AtomicMember {
+    pub name: String,
+    pub offset: u64,
+    pub size: u64,
+    pub atomic_type: AtomicType,
+}
+
+pub enum AtomicType {
+    StdAtomic,       // C++ std::atomic<T>
+    RustAtomic,      // Rust std::sync::atomic::*
+    VolatilePtr,     // volatile keyword (potential atomic)
+    LockFreeQueue,   // Known lock-free data structure
+}
+
+pub enum Severity {
+    Critical,  // Multiple atomics same cache line
+    Warning,   // Atomic near cache line boundary
+    Info,      // Single atomic detected
+}
+```
+
+### 7.3 Implementation
+
+```rust
+pub fn detect_false_sharing(
+    struct_layout: &StructLayout,
+    cache_line_size: u64,
+) -> Vec<FalseSharingWarning> {
+    let mut warnings = Vec::new();
+    
+    // 1. Identify atomic members
+    let atomics: Vec<_> = struct_layout.members
+        .iter()
+        .filter_map(|m| classify_atomic(&m.type_name).map(|t| (m, t)))
+        .collect();
+    
+    if atomics.is_empty() {
+        return warnings;
+    }
+    
+    // 2. Group atomics by cache line
+    let mut cache_line_groups: HashMap<u64, Vec<(&MemberLayout, AtomicType)>> = 
+        HashMap::new();
+    
+    for (member, atomic_type) in &atomics {
+        let cache_line = member.offset / cache_line_size;
+        cache_line_groups
+            .entry(cache_line)
+            .or_default()
+            .push((*member, atomic_type.clone()));
+    }
+    
+    // 3. Flag cache lines with multiple atomics
+    for (cache_line, members) in cache_line_groups {
+        if members.len() > 1 {
+            warnings.push(FalseSharingWarning {
+                struct_name: struct_layout.name.clone(),
+                cache_line,
+                atomics: members.iter().map(|(m, t)| AtomicMember {
+                    name: m.name.clone(),
+                    offset: m.offset,
+                    size: m.size,
+                    atomic_type: t.clone(),
+                }).collect(),
+                severity: Severity::Critical,
+            });
+        }
+    }
+    
+    // 4. Check for atomics near cache line boundaries
+    for (member, atomic_type) in &atomics {
+        let line_offset = member.offset % cache_line_size;
+        let bytes_to_boundary = cache_line_size - line_offset;
+        
+        // Warn if atomic is within 8 bytes of boundary
+        if bytes_to_boundary < 8 && bytes_to_boundary < member.size {
+            warnings.push(FalseSharingWarning {
+                struct_name: struct_layout.name.clone(),
+                cache_line: member.offset / cache_line_size,
+                atomics: vec![AtomicMember {
+                    name: member.name.clone(),
+                    offset: member.offset,
+                    size: member.size,
+                    atomic_type: atomic_type.clone(),
+                }],
+                severity: Severity::Warning,
+            });
+        }
+    }
+    
+    warnings
+}
+
+/// Classify if a type is atomic
+fn classify_atomic(type_name: &str) -> Option<AtomicType> {
+    // C++ std::atomic
+    if type_name.contains("std::atomic") || type_name.contains("atomic<") {
+        return Some(AtomicType::StdAtomic);
+    }
+    
+    // Rust atomics
+    if type_name.contains("AtomicU") || 
+       type_name.contains("AtomicI") ||
+       type_name.contains("AtomicBool") ||
+       type_name.contains("AtomicPtr") {
+        return Some(AtomicType::RustAtomic);
+    }
+    
+    // C _Atomic
+    if type_name.starts_with("_Atomic") {
+        return Some(AtomicType::StdAtomic);
+    }
+    
+    None
+}
+```
+
+### 7.4 Example Detection
+
+**Problematic struct**:
+```cpp
+struct CounterPair {
+    std::atomic<uint64_t> read_count;   // offset 0
+    std::atomic<uint64_t> write_count;  // offset 8
+    // Both on same cache line → FALSE SHARING!
+};
+```
+
+**Detection Output**:
+```
+⚠️  FALSE SHARING DETECTED: CounterPair
+    Cache Line 0 contains 2 atomics:
+    - read_count (std::atomic<uint64_t>) at offset 0
+    - write_count (std::atomic<uint64_t>) at offset 8
+    
+    RECOMMENDATION: Add padding between atomics:
+    
+    struct CounterPair {
+        alignas(64) std::atomic<uint64_t> read_count;
+        alignas(64) std::atomic<uint64_t> write_count;
+    };
+```
+
+### 7.5 Padding Recommendations
+
+```rust
+pub fn suggest_false_sharing_fix(
+    warning: &FalseSharingWarning,
+    cache_line_size: u64,
+) -> String {
+    if warning.atomics.len() < 2 {
+        return format!(
+            "Consider adding alignas({}) to ensure cache line alignment",
+            cache_line_size
+        );
+    }
+    
+    let mut suggestion = String::new();
+    suggestion.push_str("Add cache line padding between atomics:\n\n");
+    
+    for (i, atomic) in warning.atomics.iter().enumerate() {
+        if i > 0 {
+            suggestion.push_str(&format!(
+                "    alignas({}) {} {};\n",
+                cache_line_size,
+                atomic.atomic_type,
+                atomic.name
+            ));
+        } else {
+            suggestion.push_str(&format!(
+                "    alignas({}) {} {};\n",
+                cache_line_size,
+                atomic.atomic_type,
+                atomic.name
+            ));
+        }
+    }
+    
+    suggestion
+}
+```
+
+---
+
+## 8. Quick Reference: Algorithm Complexity
+
+| Algorithm | Time Complexity | Space Complexity | Notes |
+|-----------|-----------------|------------------|-------|
+| Padding Detection | O(n log n) | O(n) | n = members, sorting dominates |
+| Cache Line Analysis | O(n) | O(v) | v = violations |
+| Bitfield Analysis | O(n) | O(b) | b = bitfield groups |
+| Optimal Layout | O(n log n) | O(n) | Greedy sort |
+| Struct Diff | O(n + m) | O(n + m) | Hash-based matching |
+| Budget Evaluation | O(s × b) | O(v) | s = structs, b = budgets |
+| False Sharing | O(n) | O(a) | a = atomics |
+
+---
+
 ## Next Steps
 
 → [Business Model](./07-business-model.md) - Pricing and go-to-market strategy

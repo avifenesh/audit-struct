@@ -624,4 +624,20 @@ Each task is complete when:
 5. ✅ No new clippy warnings
 6. ✅ Committed to feature branch
 
+---
+
+## Navigation
+
+← [Future Roadmap](./10-future-roadmap.md) | [Task Breakdown Analysis](./task-breakdown-analysis.md) →
+
+---
+
+## Quick Links
+
+| Document | Description |
+|----------|-------------|
+| [README](./README.md) | Documentation overview |
+| [Technical Architecture](./04-technical-architecture.md) | System design |
+| [Implementation Roadmap](./08-implementation-roadmap.md) | Timeline and milestones |
+| [API Specification](./09-api-specification.md) | JSON schemas and endpoints |
 
