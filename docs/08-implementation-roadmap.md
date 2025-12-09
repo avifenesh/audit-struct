@@ -256,9 +256,13 @@ Launch the web dashboard for historical tracking and team collaboration.
 
 ---
 
-## 5. Phase 4: Enhancement (Weeks 17+)
+## 5. Phase 4: Advanced Features & Hardening (Weeks 17+)
 
-### 5.1 v1.1.0 Features
+### 5.1 Objective
+
+Turn the MVP into a production-ready system for demanding customers.
+
+### 5.2 v1.1.0 Features
 
 | Feature | Description | Priority |
 |---------|-------------|----------|
@@ -268,7 +272,17 @@ Launch the web dashboard for historical tracking and team collaboration.
 | GitLab integration | GitLab App, MR comments | Medium |
 | Slack integration | Alert notifications | Low |
 
-### 5.2 v1.2.0 Features
+**Milestones:**
+- False sharing detection beta
+- Layout suggestion beta
+- LTO-aware analysis validation
+- Performance and scalability benchmarking under heavy CI load
+
+**Exit Criteria:**
+- System remains stable and performant under concurrent CI usage
+- Advanced analyses produce actionable and trusted results for expert users
+
+### 5.3 v1.2.0 Features
 
 | Feature | Description | Priority |
 |---------|-------------|----------|
@@ -276,6 +290,25 @@ Launch the web dashboard for historical tracking and team collaboration.
 | Custom reporters | Plugin system for output | Low |
 | API v2 | GraphQL API | Low |
 | Mobile app | iOS/Android dashboard | Low |
+
+---
+
+## 6. Phase 5: Business & Enterprise (Post-MVP)
+
+### 6.1 Objective
+
+Operationalize the business aspects while preserving a strong developer-centric ethos.
+
+### 6.2 Milestones
+
+- Pricing page and tier definitions
+- Self-hosted deployment option (Helm chart / Docker Compose)
+- SSO, audit logs, and compliance basics (e.g., SOC2 trajectory)
+
+### 6.3 Exit Criteria
+
+- At least a handful of paying customers across target segments (HFT, embedded, games)
+- Clear, repeatable onboarding and support processes
 
 ---
 

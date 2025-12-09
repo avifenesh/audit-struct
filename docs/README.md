@@ -40,9 +40,10 @@ This documentation provides a comprehensive specification for building **struct-
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
-| [08-implementation-roadmap.md](./08-implementation-roadmap.md) | Phased development plan with milestones | Engineering, PM |
+| [08-implementation-roadmap.md](./08-implementation-roadmap.md) | Phased development plan with milestones (Phases 1-5) | Engineering, PM |
 | [10-future-roadmap.md](./10-future-roadmap.md) | Advanced features and long-term vision | Everyone |
-| [11-task-breakdown.md](./11-task-breakdown.md) | Granular task list for implementation | Engineering |
+| [11-task-breakdown.md](./11-task-breakdown.md) | Granular task list with priorities (P0/P1/P2) | Engineering |
+| [task-breakdown-analysis.md](./task-breakdown-analysis.md) | Task breakdown comparison and recommendations | Engineering |
 
 ---
 
@@ -100,13 +101,15 @@ Start with:
 | **Embedded/IoT** | RAM = BOM cost | Hardware cost reduction |
 | **AAA Gaming** | Cache misses = frame drops | Frame rate stability |
 
-### Timeline
+### Timeline (Solo Side Project - No Strict Deadlines)
 
-| Phase | Duration | Deliverable |
+| Phase | Priority | Deliverable |
 |-------|----------|-------------|
-| **Phase 1** | Weeks 1-6 | Core CLI (v0.1.0) |
-| **Phase 2** | Weeks 7-10 | Diff + CI mode (v0.2.0) |
-| **Phase 3** | Weeks 11-16 | SaaS MVP (v1.0.0) |
+| **Phase 1** | P0 (MVP) | Core CLI (v0.1.0) |
+| **Phase 2** | P1 | Diff + CI mode (v0.2.0) |
+| **Phase 3** | P1 (Optional) | SaaS MVP (v1.0.0) |
+| **Phase 4** | P2 (Optional) | Advanced features (v1.1.0+) |
+| **Phase 5** | P2 (Optional) | Business & Enterprise |
 
 ---
 
