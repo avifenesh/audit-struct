@@ -12,3 +12,6 @@ Cargo.lock
 
 # Test artifacts
 *.dSYM/
+
+# AI instructions (symlink to private repo)
+CLAUDE.md
