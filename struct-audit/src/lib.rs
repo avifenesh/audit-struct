@@ -7,7 +7,7 @@ pub mod output;
 pub mod types;
 
 pub use analysis::analyze_layout;
-pub use cli::{Cli, Commands, OutputFormat};
+pub use cli::{Cli, Commands, OutputFormat, SortField};
 pub use dwarf::DwarfContext;
 pub use error::{Error, Result};
 pub use loader::{BinaryData, LoadedDwarf};

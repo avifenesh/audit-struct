@@ -34,6 +34,18 @@ pub enum Commands {
         #[arg(short, long, value_enum, default_value = "table")]
         output: OutputFormat,
 
+        /// Sort structs by field
+        #[arg(short, long, value_enum, default_value = "name")]
+        sort_by: SortField,
+
+        /// Show only the top N structs (by sort order)
+        #[arg(short = 'n', long)]
+        top: Option<usize>,
+
+        /// Show only structs with at least N bytes of padding
+        #[arg(long)]
+        min_padding: Option<u64>,
+
         /// Disable colored output
         #[arg(long)]
         no_color: bool,
@@ -52,4 +64,16 @@ pub enum Commands {
 pub enum OutputFormat {
     Table,
     Json,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+pub enum SortField {
+    /// Sort by struct name (alphabetical)
+    Name,
+    /// Sort by total size (largest first)
+    Size,
+    /// Sort by padding bytes (most padding first)
+    Padding,
+    /// Sort by padding percentage (worst efficiency first)
+    PaddingPct,
 }

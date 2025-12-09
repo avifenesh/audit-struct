@@ -1,4 +1,4 @@
-use struct_audit::{analyze_layout, BinaryData, DwarfContext};
+use struct_audit::{BinaryData, DwarfContext, analyze_layout};
 
 #[test]
 #[ignore] // Requires test fixture to be compiled
@@ -7,7 +7,9 @@ fn test_parse_simple_struct() {
     // gcc -g -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c
     let path = std::path::Path::new("tests/fixtures/bin/test_simple");
     if !path.exists() {
-        eprintln!("Test fixture not compiled. Run: gcc -g -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c");
+        eprintln!(
+            "Test fixture not compiled. Run: gcc -g -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c"
+        );
         return;
     }
 
@@ -15,9 +17,7 @@ fn test_parse_simple_struct() {
     let loaded = binary.load_dwarf().expect("Failed to load DWARF");
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf
-        .find_structs(Some("NoPadding"))
-        .expect("Failed to parse structs");
+    let mut layouts = dwarf.find_structs(Some("NoPadding")).expect("Failed to parse structs");
 
     assert_eq!(layouts.len(), 1);
     let layout = &mut layouts[0];
@@ -42,9 +42,7 @@ fn test_detect_padding() {
     let loaded = binary.load_dwarf().expect("Failed to load DWARF");
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf
-        .find_structs(Some("InternalPadding"))
-        .expect("Failed to parse structs");
+    let mut layouts = dwarf.find_structs(Some("InternalPadding")).expect("Failed to parse structs");
 
     assert_eq!(layouts.len(), 1);
     let layout = &mut layouts[0];
