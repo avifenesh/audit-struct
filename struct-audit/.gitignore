@@ -1,0 +1,11 @@
+/target
+Cargo.lock
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test binaries (compiled on demand)
+tests/fixtures/*.o
+tests/fixtures/*.so
+tests/fixtures/bin/

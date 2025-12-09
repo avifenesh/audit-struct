@@ -1,0 +1,166 @@
+use crate::types::StructLayout;
+use colored::Colorize;
+use comfy_table::{Cell, CellAlignment, Color, Table, presets::UTF8_FULL_CONDENSED};
+
+pub struct TableFormatter {
+    no_color: bool,
+    cache_line_size: u32,
+}
+
+impl TableFormatter {
+    pub fn new(no_color: bool, cache_line_size: u32) -> Self {
+        Self { no_color, cache_line_size }
+    }
+
+    pub fn format(&self, layouts: &[StructLayout]) -> String {
+        let mut output = String::new();
+
+        for (i, layout) in layouts.iter().enumerate() {
+            if i > 0 {
+                output.push_str("\n\n");
+            }
+            output.push_str(&self.format_struct(layout));
+        }
+
+        output
+    }
+
+    fn format_struct(&self, layout: &StructLayout) -> String {
+        let mut output = String::new();
+
+        // Header
+        let header = format!(
+            "struct {} ({} bytes, {:.1}% padding, {} cache line{})",
+            layout.name,
+            layout.size,
+            layout.metrics.padding_percentage,
+            layout.metrics.cache_lines_spanned,
+            if layout.metrics.cache_lines_spanned == 1 { "" } else { "s" }
+        );
+
+        if self.no_color {
+            output.push_str(&header);
+        } else {
+            output.push_str(&header.bold().to_string());
+        }
+        output.push('\n');
+
+        if let Some(ref loc) = layout.source_location {
+            output.push_str(&format!("  defined at {}:{}\n", loc.file, loc.line));
+        }
+        output.push('\n');
+
+        // Table
+        let mut table = Table::new();
+        table.load_preset(UTF8_FULL_CONDENSED);
+        table.set_header(vec!["Offset", "Size", "Type", "Field"]);
+
+        let mut entries: Vec<TableEntry> = Vec::new();
+
+        // Build sorted entries including padding holes
+        let mut padding_iter = layout.metrics.padding_holes.iter().peekable();
+
+        for member in &layout.members {
+            // Insert any padding before this member
+            while let Some(hole) = padding_iter.peek() {
+                if member.offset.map(|o| hole.offset < o).unwrap_or(false) {
+                    let hole = padding_iter.next().unwrap();
+                    entries.push(TableEntry::Padding { offset: hole.offset, size: hole.size });
+                } else {
+                    break;
+                }
+            }
+
+            entries.push(TableEntry::Member {
+                offset: member.offset,
+                size: member.size,
+                type_name: &member.type_name,
+                name: &member.name,
+            });
+        }
+
+        // Remaining padding (tail padding)
+        for hole in padding_iter {
+            entries.push(TableEntry::Padding { offset: hole.offset, size: hole.size });
+        }
+
+        // Sort by offset
+        entries.sort_by_key(|e| match e {
+            TableEntry::Member { offset, .. } => offset.unwrap_or(u64::MAX),
+            TableEntry::Padding { offset, .. } => *offset,
+        });
+
+        // Add cache line markers
+        let mut last_cache_line: Option<u64> = None;
+
+        for entry in &entries {
+            let offset = match entry {
+                TableEntry::Member { offset, .. } => offset.unwrap_or(0),
+                TableEntry::Padding { offset, .. } => *offset,
+            };
+
+            let current_cache_line = offset / self.cache_line_size as u64;
+            if last_cache_line.map(|l| l != current_cache_line).unwrap_or(false) {
+                let marker_offset = current_cache_line * self.cache_line_size as u64;
+                table.add_row(vec![
+                    Cell::new(format!(
+                        "--- cache line {} ({}) ---",
+                        current_cache_line, marker_offset
+                    ))
+                    .set_alignment(CellAlignment::Center),
+                    Cell::new(""),
+                    Cell::new(""),
+                    Cell::new(""),
+                ]);
+            }
+            last_cache_line = Some(current_cache_line);
+
+            match entry {
+                TableEntry::Member { offset, size, type_name, name } => {
+                    table.add_row(vec![
+                        Cell::new(offset.map(|o| o.to_string()).unwrap_or_else(|| "?".to_string())),
+                        Cell::new(size.map(|s| s.to_string()).unwrap_or_else(|| "?".to_string())),
+                        Cell::new(type_name.to_string()),
+                        Cell::new(name.to_string()),
+                    ]);
+                }
+                TableEntry::Padding { offset, size } => {
+                    let row = if self.no_color {
+                        vec![
+                            Cell::new(offset.to_string()),
+                            Cell::new(format!("[{} bytes]", size)),
+                            Cell::new("---"),
+                            Cell::new("PAD"),
+                        ]
+                    } else {
+                        vec![
+                            Cell::new(offset.to_string()).fg(Color::Yellow),
+                            Cell::new(format!("[{} bytes]", size)).fg(Color::Yellow),
+                            Cell::new("---").fg(Color::Yellow),
+                            Cell::new("PAD").fg(Color::Yellow),
+                        ]
+                    };
+                    table.add_row(row);
+                }
+            }
+        }
+
+        output.push_str(&table.to_string());
+
+        // Summary
+        output.push_str(&format!(
+            "\n\nSummary: {} useful bytes, {} padding bytes ({:.1}%), cache density: {:.1}%\n",
+            layout.metrics.useful_size,
+            layout.metrics.padding_bytes,
+            layout.metrics.padding_percentage,
+            layout.metrics.cache_line_density
+        ));
+
+        output
+    }
+}
+
+enum TableEntry<'a> {
+    Member { offset: Option<u64>, size: Option<u64>, type_name: &'a str, name: &'a str },
+    Padding { offset: u64, size: u64 },
+}
