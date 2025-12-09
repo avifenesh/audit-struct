@@ -10,9 +10,26 @@ This document breaks down the implementation roadmap into specific, actionable t
 
 ---
 
-## Phase 1: Core CLI Development (Weeks 1-6)
+## Priority Guide
 
-### Week 1: Project Setup
+- **P0** – Absolutely required for the MVP CLI. Ship these before touching anything else.
+- **P1** – Nice-to-have improvements that deepen analysis, CI, or SaaS value.
+- **P2** – Future-looking or experimental items. Safe to skip until there is extra time or user demand.
+
+## Quick Wins (1–2 hours each)
+
+- [ ] Initialize the Rust workspace and add `gimli`, `object`, `clap`, `serde`, `memmap2`, `comfy-table`.
+- [ ] Stand up `.github/workflows/ci.yml` with `cargo fmt`, `clippy`, and `test`.
+- [ ] Scaffold the CLI structure (`src/cli`, `src/loader`, `src/dwarf`, etc.).
+- [ ] Print the first comfy-table layout for a sample ELF binary.
+- [ ] Emit JSON output behind `--output json`.
+- [ ] Add `--filter` and `--no-color` flags to the `inspect` command.
+
+---
+
+## Phase 1: Core CLI Development (P0)
+
+### Project Setup (P0)
 
 #### 1.1 Initialize Rust Workspace
 - [ ] Create new Rust project: `cargo new struct-audit`
@@ -70,7 +87,7 @@ src/
 
 ---
 
-### Week 2: Binary Loading
+### Binary Loading (P0)
 
 #### 2.1 Implement Binary Loader Trait
 ```rust
@@ -114,7 +131,7 @@ pub trait BinaryLoader {
 
 ---
 
-### Week 3: DWARF Parsing Foundation
+### DWARF Parsing Foundation (P0)
 
 #### 3.1 Initialize gimli Context
 - [ ] Create `DwarfContext` wrapper struct
@@ -149,7 +166,7 @@ pub fn iter_units(&self) -> impl Iterator<Item = CompilationUnit>
 
 ---
 
-### Week 4: Member Extraction
+### Member Extraction (P0)
 
 #### 4.1 Parse DW_TAG_member
 - [ ] Iterate children of struct DIE
@@ -190,7 +207,7 @@ pub fn resolve_type_size(type_ref: TypeOffset) -> Result<u64>
 
 ---
 
-### Week 5: Expression Evaluator
+### Expression Evaluator (P1)
 
 #### 5.1 Implement Location Expression Parser
 - [ ] Create `ExpressionEvaluator` struct
@@ -218,7 +235,7 @@ pub fn resolve_type_size(type_ref: TypeOffset) -> Result<u64>
 
 ---
 
-### Week 6: Output Formatting
+### Output Formatting & CLI UX (P0)
 
 #### 6.1 Implement Table Formatter
 - [ ] Use `comfy-table` crate
@@ -263,9 +280,9 @@ struct-audit inspect <binary> [OPTIONS]
 
 ---
 
-## Phase 2: Advanced Analysis & Diffing (Weeks 7-10)
+## Phase 2: Advanced Analysis & Diffing (P1)
 
-### Week 7: DWARF 5 Bitfields
+### Bitfields & Versioning (P1)
 
 #### 7.1 Detect DWARF Version
 - [ ] Read version from CU header
@@ -291,7 +308,7 @@ struct-audit inspect <binary> [OPTIONS]
 
 ---
 
-### Week 8: Diff Algorithm
+### Diff Algorithm (P1)
 
 #### 8.1 Implement Struct Matching
 ```rust
@@ -323,7 +340,7 @@ pub fn match_structs(old: &[StructLayout], new: &[StructLayout]) -> StructDiff
 
 ---
 
-### Week 9: CI Mode
+### CI Mode & Budgets (P1)
 
 #### 9.1 Implement Budget Configuration
 ```yaml
@@ -368,7 +385,7 @@ struct-audit check <binary> --config .struct-audit.yaml
 
 ---
 
-### Week 10: Polish & Documentation
+### Performance & Polish (P1)
 
 #### 10.1 Performance Optimization
 - [ ] Profile with large binaries
@@ -397,9 +414,9 @@ struct-audit check <binary> --config .struct-audit.yaml
 
 ---
 
-## Phase 3: SaaS Platform MVP (Weeks 11-16)
+## Phase 3: SaaS Platform MVP (P1 Optional)
 
-### Weeks 11-12: API Backend
+### Backend Foundations (P1 Optional)
 
 #### 11.1 Backend Setup
 - [ ] Initialize Axum project
@@ -435,7 +452,7 @@ struct-audit check <binary> --config .struct-audit.yaml
 
 ---
 
-### Weeks 13-14: GitHub Integration
+### GitHub Integration (P1 Optional)
 
 #### 13.1 GitHub App Setup
 - [ ] Register GitHub App
@@ -463,7 +480,7 @@ struct-audit check <binary> --config .struct-audit.yaml
 
 ---
 
-### Weeks 15-16: Frontend Dashboard
+### Frontend & Launch (P1 Optional)
 
 #### 15.1 Frontend Setup
 - [ ] Initialize Next.js project
@@ -496,6 +513,51 @@ struct-audit check <binary> --config .struct-audit.yaml
 - [ ] Write launch blog post
 - [ ] Announce on Hacker News
 - [ ] Monitor for issues
+
+---
+
+## Phase 4: Advanced Capabilities (P2)
+
+### False Sharing Detection (P2)
+- [ ] Parse atomic member metadata and cache-line offsets.
+- [ ] Flag structs where two atomics share a line; emit severity levels.
+- [ ] Add report section plus CLI flag to surface warnings.
+
+### Optimization Suggestions & `suggest` Command (P2)
+- [ ] Implement bin-packing heuristic that reorders members to minimize padding.
+- [ ] Provide `struct-audit suggest <binary>` output with before/after tables.
+- [ ] Add acceptance tests comparing suggested layout vs. baseline.
+
+### Expanded Language & Build Support (P2)
+- [ ] Add Go DWARF parsing path (little endian assumptions, pointer sizes).
+- [ ] Detect LTO builds and compare pre/post-LTO struct sizes.
+- [ ] Surface compiler/flag metadata in reports for reproducibility.
+
+### Additional Integrations (P2)
+- [ ] GitLab App / pipeline integration mirroring GitHub Action features.
+- [ ] Optional VS Code helper or JSON schema for IDE tooling.
+- [ ] Multi-architecture comparison mode (x86 vs ARM vs WASM).
+
+---
+
+## Testing Strategy (P0/P1)
+- [ ] Unit tests for loaders, DWARF parsing, analysis math.
+- [ ] Integration suite that runs CLI against sample ELF/Mach-O/PE binaries.
+- [ ] Performance benchmarks on multi-GB binaries; record baseline metrics.
+- [ ] Cross-platform CI matrix (Linux/macOS/Windows) validating binaries generated per platform.
+
+## Security & Reliability Tasks (P1)
+- [ ] Dependency audit via `cargo audit` / `npm audit` (frontend).
+- [ ] OAuth and API auth review before enabling SaaS uploads.
+- [ ] Threat modeling for report ingestion (rate limits, payload validation).
+- [ ] Backup & retention policy for stored DWARF data and user configs.
+
+## Documentation, Release & DevOps (P1)
+- [ ] CLI command reference documenting all flags and examples.
+- [ ] Configuration guide for `.struct-audit.yaml` budgets and CI usage.
+- [ ] Troubleshooting section (common DWARF parsing failures, workarounds).
+- [ ] Release checklist (CHANGELOG updates, version bumping, crates.io publish, GitHub Releases).
+- [ ] Monitoring and alerting setup for SaaS (uptime checks, error dashboards).
 
 ---
 
