@@ -6,3 +6,6 @@
 - Never assume that your implementation is simply correct, always validate logic and run tests to verify.
 - When context is about to end, there is no need to start wrraping up the task prematurely. before the context end you will get context compacted and youll be able to keep working. never stop a task in the middle or stub implementation because you see the context get empty.
 - NEVER leave stubs, todos, dummy iplemantetion etc. unless explictly instructed
+- After each task when you dont need to fix more changes commit before the next step, have as many checkouts as possilbe
+- Rust edition 2024, toolchain version 1.91
+- Before push - cargo fmt, cargo clippy
