@@ -50,8 +50,8 @@ pub enum Commands {
         #[arg(long)]
         no_color: bool,
 
-        /// Cache line size in bytes
-        #[arg(long, default_value = "64")]
+        /// Cache line size in bytes (must be > 0)
+        #[arg(long, default_value = "64", value_parser = clap::value_parser!(u32).range(1..))]
         cache_line: u32,
 
         /// Pretty-print JSON output

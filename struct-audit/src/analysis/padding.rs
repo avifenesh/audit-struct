@@ -4,48 +4,47 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
     let mut padding_holes = Vec::new();
     let mut useful_size: u64 = 0;
     let mut current_offset: u64 = 0;
+    let mut last_member_name: Option<String> = None;
 
     for member in &layout.members {
         let member_offset = match member.offset {
             Some(o) => o,
-            None => continue,
+            None => continue, // Skip members with unknown offset
         };
-        let member_size = member.size.unwrap_or(0);
+
+        // Skip members with unknown size for accurate metrics
+        let member_size = match member.size {
+            Some(s) => s,
+            None => {
+                // Unknown size - we can't accurately track current_offset
+                // Still record the member name for after_member tracking
+                last_member_name = Some(member.name.clone());
+                continue;
+            }
+        };
 
         // Check for gap before this member
         if member_offset > current_offset {
             let gap_size = member_offset - current_offset;
-            let after_member = if padding_holes.is_empty() {
-                None
-            } else {
-                layout
-                    .members
-                    .iter()
-                    .filter(|m| m.offset.is_some_and(|o| o < member_offset))
-                    .next_back()
-                    .map(|m| m.name.clone())
-            };
-
             padding_holes.push(PaddingHole {
                 offset: current_offset,
                 size: gap_size,
-                after_member,
+                after_member: last_member_name.clone(),
             });
         }
 
         useful_size += member_size;
         current_offset = member_offset + member_size;
+        last_member_name = Some(member.name.clone());
     }
 
     // Check for tail padding
     if current_offset < layout.size {
         let tail_padding = layout.size - current_offset;
-        let after_member = layout.members.last().map(|m| m.name.clone());
-
         padding_holes.push(PaddingHole {
             offset: current_offset,
             size: tail_padding,
-            after_member,
+            after_member: last_member_name,
         });
     }
 

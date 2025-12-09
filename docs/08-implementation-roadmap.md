@@ -144,7 +144,7 @@ Handle edge cases, add comparison capabilities, enable CI integration.
 
 ### Objective
 
-Add detection and optimization features for power users.
+Add detection and optimization features for power users, plus optional interactive TUI mode.
 
 ### Prerequisites
 
@@ -159,6 +159,7 @@ Add detection and optimization features for power users.
 - `suggest` command (optimal field ordering)
 - C++ inheritance visualization
 - Go language support (experimental)
+- **Interactive TUI mode** (optional)
 
 ### Milestones
 
@@ -168,6 +169,32 @@ Add detection and optimization features for power users.
 | 2 | Suggestions | Bin-packing algorithm, before/after comparison |
 | 3 | Inheritance | C++ base class visualization |
 | 4 | Go Support | Parse Go DWARF output |
+| 5 | TUI Mode | Interactive struct browser (optional) |
+
+### TUI Mode Specification
+
+**Rationale**: Research shows TUI adds value for exploration of large binaries where users don't know what they're looking for. Follows dua-cli dual-mode pattern.
+
+**Invocation**:
+```bash
+struct-audit tui <binary>    # Interactive mode
+struct-audit inspect ...     # CLI mode (unchanged)
+```
+
+**Minimum Viable Features**:
+1. Scrollable struct list (left panel)
+2. Selected struct detail (right panel)
+3. `/` to search/filter
+4. `s` to cycle sort modes (name, size, padding)
+5. `q` to quit
+6. `j/k` or arrows to navigate
+
+**Library**: ratatui (community standard, actively maintained)
+
+**Prerequisites for TUI**:
+- CLI v0.2.0+ stable with diff command
+- User requests for interactive exploration
+- Core analysis complete (bitfields, expression offsets)
 
 ---
 

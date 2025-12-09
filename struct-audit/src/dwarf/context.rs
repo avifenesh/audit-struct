@@ -166,7 +166,7 @@ impl<'a> DwarfContext<'a> {
                 // Expression-based offset - not supported in MVP
                 Ok(None)
             }
-            Ok(None) => Ok(Some(0)), // First member often has implicit offset 0
+            Ok(None) => Ok(None), // Missing offset - don't assume 0 (bitfields, packed structs)
             _ => Ok(None),
         }
     }

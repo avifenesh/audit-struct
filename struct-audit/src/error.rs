@@ -16,9 +16,6 @@ pub enum Error {
 
     #[error("DWARF parsing error: {0}")]
     Dwarf(String),
-
-    #[error("No structs found matching filter: {0}")]
-    NoMatchingStructs(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
