@@ -15,3 +15,4 @@
 - After each task when you dont need to fix more changes commit before the next step, have as many checkouts as possible
 - Rust edition 2024, toolchain version 1.91
 - Before push - cargo fmt, cargo clippy
+- When you need to explore the codebase and to use a lot of files in order to do so, use gemini cli non interactive mode, and ask it to explore the codebase and your needs exactly, be precise and specific. `gemini -p <prompt> --model gemini-3.0-pro-preview`
