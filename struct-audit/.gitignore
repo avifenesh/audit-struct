@@ -9,3 +9,10 @@ Cargo.lock
 tests/fixtures/*.o
 tests/fixtures/*.so
 tests/fixtures/bin/
+tests/fixtures/rust_test/target/
+tests/fixtures/multifile/*.o
+tests/fixtures/multifile/*.i
+tests/fixtures/multifile/*.s
+tests/fixtures/multifile/*.bc
+tests/fixtures/multifile/trading_system
+tests/fixtures/multifile/trading_system.dSYM/
