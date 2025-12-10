@@ -99,4 +99,4 @@ This documentation provides specifications for **struct-audit**, a CLI tool that
 
 ## License
 
-MIT or Apache 2.0 (TBD)
+MIT OR Apache-2.0

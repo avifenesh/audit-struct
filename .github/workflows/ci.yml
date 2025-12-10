@@ -34,6 +34,11 @@ jobs:
       - name: Build
         run: cargo build --release
 
+      - name: Compile test fixture
+        run: |
+          mkdir -p tests/fixtures/bin
+          gcc -g -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c
+
       - name: Run tests
         run: cargo test
 

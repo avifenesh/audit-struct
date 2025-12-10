@@ -105,8 +105,13 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
 }
 
 fn diff_struct(old: &StructLayout, new: &StructLayout) -> Option<StructChange> {
-    let size_delta = new.size as i64 - old.size as i64;
-    let padding_delta = new.metrics.padding_bytes as i64 - old.metrics.padding_bytes as i64;
+    // Use saturating conversion to avoid overflow on extremely large u64 values
+    let size_delta = i64::try_from(new.size).unwrap_or(i64::MAX).saturating_sub(
+        i64::try_from(old.size).unwrap_or(i64::MAX),
+    );
+    let padding_delta = i64::try_from(new.metrics.padding_bytes)
+        .unwrap_or(i64::MAX)
+        .saturating_sub(i64::try_from(old.metrics.padding_bytes).unwrap_or(i64::MAX));
 
     let mut member_changes = Vec::new();
 

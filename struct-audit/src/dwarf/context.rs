@@ -186,7 +186,7 @@ impl<'a> DwarfContext<'a> {
             Ok(Some(AttributeValue::Sdata(offset))) if offset >= 0 => Ok(Some(offset as u64)),
             Ok(Some(AttributeValue::Exprloc(expr))) => {
                 // Try simple constant extraction first (fast path)
-                if let Some(offset) = try_simple_offset(expr) {
+                if let Some(offset) = try_simple_offset(expr, unit.encoding()) {
                     return Ok(Some(offset));
                 }
                 // Fall back to full expression evaluation

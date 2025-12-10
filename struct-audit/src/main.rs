@@ -257,9 +257,28 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
     let loaded = binary.load_dwarf().context("Failed to load DWARF debug info")?;
     let dwarf = DwarfContext::new(&loaded);
 
+    if config.budgets.is_empty() {
+        eprintln!("Warning: No budget constraints defined in config file");
+        return Ok(());
+    }
+
     let mut layouts = dwarf.find_structs(None)?;
     for layout in &mut layouts {
         analyze_layout(layout, cache_line_size);
+    }
+
+    // Track which budgets were matched
+    let layout_names: std::collections::HashSet<&str> =
+        layouts.iter().map(|l| l.name.as_str()).collect();
+
+    // Warn about budgets for non-existent structs
+    for budget_name in config.budgets.keys() {
+        if !layout_names.contains(budget_name.as_str()) {
+            eprintln!(
+                "Warning: Budget defined for '{}' but struct not found in binary",
+                budget_name
+            );
+        }
     }
 
     let mut violations = Vec::new();
@@ -292,15 +311,15 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
     }
 
     if violations.is_empty() {
-        println!("✓ All structs within budget constraints");
+        println!("All structs within budget constraints");
         Ok(())
     } else {
         use colored::Colorize;
-        println!("{}", "Budget violations:".red().bold());
+        eprintln!("{}", "Budget violations:".red().bold());
         for v in &violations {
-            println!("  ✗ {}", v);
+            eprintln!("  {}", v);
         }
-        std::process::exit(1);
+        bail!("Budget check failed: {} violation(s)", violations.len());
     }
 }
 
