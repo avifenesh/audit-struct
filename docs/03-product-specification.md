@@ -108,13 +108,17 @@ struct-audit inspect ./target/release/my_app
 ```
 
 **Acceptance Criteria**:
-- [ ] Parses ELF, Mach-O, and PE binaries
-- [ ] Displays offset, size, type, and field name
-- [ ] Highlights padding holes with visual indicator
-- [ ] Shows cache line boundaries
-- [ ] Calculates padding percentage
-- [ ] Supports filtering by struct name (regex)
-- [ ] Colorized output for terminal
+- [x] Parses ELF, Mach-O, and PE binaries (DWARF debug info required)
+- [x] Displays offset, size, type, and field name
+- [x] Highlights padding holes with visual indicator
+- [x] Shows cache line boundaries
+- [x] Calculates padding percentage
+- [x] Supports filtering by struct name (substring match)
+- [x] Colorized output for terminal
+- [x] JSON output format
+- [x] Sorting by name, size, padding, padding percentage
+- [x] `--top N` to limit results
+- [x] `--min-padding N` to filter by minimum padding
 
 ---
 
@@ -152,12 +156,13 @@ struct-audit diff ./main-binary ./feature-binary
 ```
 
 **Acceptance Criteria**:
-- [ ] Matches structs by fully-qualified name
-- [ ] Detects added/removed/renamed fields
-- [ ] Calculates size and padding deltas
-- [ ] Flags cache line boundary changes
-- [ ] Returns non-zero exit code on regression
-- [ ] Supports JSON output for CI parsing
+- [x] Matches structs by name
+- [x] Detects added/removed structs
+- [x] Detects member changes (added, removed, offset/size/type changed)
+- [x] Calculates size and padding deltas
+- [x] Returns non-zero exit code on regression (`--fail-on-regression`)
+- [x] Supports JSON output for CI parsing
+- [ ] *(Future)* Flags cache line boundary changes
 
 ---
 
@@ -167,22 +172,15 @@ struct-audit diff ./main-binary ./feature-binary
 
 **Configuration** (`.struct-audit.yaml`):
 ```yaml
-version: 1
-cache_line_size: 64
-
 budgets:
-  - name: "my_app::Order"
+  Order:
     max_size: 64
-    max_padding_percent: 15
-    max_cache_lines: 1
-    
-  - pattern: "my_app::hot_path::*"
-    max_size: 128
-    max_padding_percent: 10
+    max_padding: 8
+    max_padding_percent: 15.0
 
-thresholds:
-  fail_on_any_regression: true
-  max_total_padding_increase: 100  # bytes
+  CriticalData:
+    max_size: 128
+    max_padding_percent: 10.0
 ```
 
 **Command**:
@@ -192,27 +190,30 @@ struct-audit check ./target/release/my_app --config .struct-audit.yaml
 
 **Output** (failure):
 ```
-❌ BUDGET EXCEEDED
+Budget violations:
+  Order: size 72 exceeds budget 64 (+8 bytes)
+  Order: padding 19.4% exceeds budget 15.0% (+4.4 percentage points)
 
-my_app::Order:
-  - Size: 72 bytes (budget: 64 bytes) ❌
-  - Padding: 19.4% (budget: 15%) ❌
-  - Cache Lines: 2 (budget: 1) ❌
-
-Exit code: 1
+Error: Budget check failed: 2 violation(s)
 ```
 
 **Acceptance Criteria**:
-- [ ] Reads configuration from YAML file
-- [ ] Supports exact name and glob patterns
-- [ ] Enforces size, padding %, and cache line budgets
-- [ ] Returns exit code 1 on budget violation
-- [ ] Outputs machine-readable JSON for CI tools
-- [ ] Supports `--baseline` flag for diff-based checks
+- [x] Reads configuration from YAML file
+- [x] Supports exact struct name matching
+- [x] Enforces size budgets (`max_size`)
+- [x] Enforces padding byte budgets (`max_padding`)
+- [x] Enforces padding percentage budgets (`max_padding_percent`)
+- [x] Validates budget values (rejects negative %, >100%, zero size)
+- [x] Returns exit code 1 on budget violation
+- [ ] *(Future)* Glob pattern matching for budget names
+- [ ] *(Future)* `max_cache_lines` budget
+- [ ] *(Future)* `--baseline` flag for diff-based checks
 
 ---
 
-### 3.4 Report Generation (`struct-audit report`)
+### 3.4 Report Generation (`struct-audit report`) — *Future*
+
+> **Status**: Planned for Phase 3/SaaS integration. Not yet implemented.
 
 **User Story**: As a developer, I want to generate a JSON report of all struct layouts so that I can upload it to the SaaS platform.
 
@@ -229,7 +230,9 @@ struct-audit report ./target/release/my_app --output report.json
 
 ---
 
-### 3.5 Optimization Suggestions (`struct-audit suggest`)
+### 3.5 Optimization Suggestions (`struct-audit suggest`) — *Future*
+
+> **Status**: Planned for Phase 3. Not yet implemented.
 
 **User Story**: As a developer, I want to see suggestions for improving struct layout so that I can reduce padding without manual analysis.
 

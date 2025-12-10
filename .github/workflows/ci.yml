@@ -106,6 +106,12 @@ jobs:
         run: |
           mkdir -p tests/fixtures/bin
           gcc -g -o tests/fixtures/bin/test_simple.exe tests/fixtures/test_simple.c
+          # Verify compilation succeeded
+          if [ ! -f tests/fixtures/bin/test_simple.exe ]; then
+            echo "ERROR: Failed to compile test fixture"
+            exit 1
+          fi
+          echo "Test fixture compiled successfully"
 
       - name: Run tests
         run: cargo test

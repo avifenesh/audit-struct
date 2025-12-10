@@ -279,11 +279,8 @@ fn create_temp_config(content: &str) -> std::path::PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let temp_dir = std::env::temp_dir();
     let unique_id = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let config_path = temp_dir.join(format!(
-        "struct-audit-test-{}-{}.yaml",
-        std::process::id(),
-        unique_id
-    ));
+    let config_path =
+        temp_dir.join(format!("struct-audit-test-{}-{}.yaml", std::process::id(), unique_id));
     std::fs::write(&config_path, content).expect("Failed to write temp config");
     config_path
 }
