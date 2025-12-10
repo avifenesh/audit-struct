@@ -1,0 +1,10 @@
+# Compiled binaries
+trading_system
+trading_system.exe
+trading_system.dSYM/
+
+# Intermediate files
+*.o
+*.i
+*.s
+*.bc
