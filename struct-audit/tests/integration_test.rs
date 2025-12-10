@@ -473,3 +473,104 @@ budgets:
         stderr
     );
 }
+
+// ============================================================================
+// Array member tests
+// ============================================================================
+
+#[test]
+fn test_array_member_size() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let binary = BinaryData::load(&path).expect("Failed to load binary");
+    let loaded = binary.load_dwarf().expect("Failed to load DWARF");
+    let dwarf = DwarfContext::new(&loaded);
+
+    let mut layouts = dwarf.find_structs(Some("WithArray")).expect("Failed to parse structs");
+
+    if layouts.is_empty() {
+        // WithArray may not exist in all fixtures, skip test
+        return;
+    }
+
+    let layout = &mut layouts[0];
+    analyze_layout(layout, 64);
+
+    // Find the array member
+    let array_member = layout.members.iter().find(|m| m.type_name.contains('['));
+    if let Some(member) = array_member {
+        // Array members should have a known size, not None
+        assert!(member.size.is_some(), "Array member should have size: {:?}", member);
+        assert!(member.size.unwrap() > 0, "Array member size should be > 0");
+    }
+}
+
+// ============================================================================
+// Diff command tests
+// ============================================================================
+
+#[test]
+fn test_diff_identical_binaries() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "diff", path.to_str().unwrap(), path.to_str().unwrap(), "-o", "json"])
+        .output()
+        .expect("Failed to run diff command");
+
+    assert!(
+        output.status.success(),
+        "Diff should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+
+    // Identical binaries should have no changes
+    let added = parsed["added"].as_array().unwrap();
+    let removed = parsed["removed"].as_array().unwrap();
+    let changed = parsed["changed"].as_array().unwrap();
+    assert!(
+        added.is_empty() && removed.is_empty() && changed.is_empty(),
+        "Identical binaries should have no diff changes, got: added={}, removed={}, changed={}",
+        added.len(),
+        removed.len(),
+        changed.len()
+    );
+}
+
+#[test]
+fn test_diff_filter() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "diff",
+            path.to_str().unwrap(),
+            path.to_str().unwrap(),
+            "--filter",
+            "NoPadding",
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run diff command");
+
+    assert!(
+        output.status.success(),
+        "Diff with filter should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
