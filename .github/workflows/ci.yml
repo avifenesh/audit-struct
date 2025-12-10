@@ -80,8 +80,15 @@ jobs:
       - name: Compile test fixture
         run: |
           mkdir -p tests/fixtures/bin
-          clang -g -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c
+          # Compile with -save-temps to keep object file for dsymutil
+          clang -g -save-temps -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c
           dsymutil tests/fixtures/bin/test_simple
+          # Verify dSYM was created with debug info
+          if ! dwarfdump --debug-info tests/fixtures/bin/test_simple.dSYM 2>/dev/null | grep -q DW_TAG; then
+            echo "ERROR: No DWARF debug info found in dSYM"
+            exit 1
+          fi
+          echo "dSYM created successfully with DWARF debug info"
 
       - name: Run tests
         run: cargo test
