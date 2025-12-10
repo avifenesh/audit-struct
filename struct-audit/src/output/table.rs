@@ -28,7 +28,6 @@ impl TableFormatter {
     fn format_struct(&self, layout: &StructLayout) -> String {
         let mut output = String::new();
 
-        // Header
         let header = format!(
             "struct {} ({} bytes, {:.1}% padding, {} cache line{})",
             layout.name,
@@ -50,18 +49,15 @@ impl TableFormatter {
         }
         output.push('\n');
 
-        // Table
         let mut table = Table::new();
         table.load_preset(UTF8_FULL_CONDENSED);
         table.set_header(vec!["Offset", "Size", "Type", "Field"]);
 
         let mut entries: Vec<TableEntry> = Vec::new();
 
-        // Build sorted entries including padding holes
         let mut padding_iter = layout.metrics.padding_holes.iter().peekable();
 
         for member in &layout.members {
-            // Insert any padding before this member
             while let Some(hole) = padding_iter.peek() {
                 if member.offset.map(|o| hole.offset < o).unwrap_or(false) {
                     let hole = padding_iter.next().unwrap();
@@ -79,18 +75,15 @@ impl TableFormatter {
             });
         }
 
-        // Remaining padding (tail padding)
         for hole in padding_iter {
             entries.push(TableEntry::Padding { offset: hole.offset, size: hole.size });
         }
 
-        // Sort by offset
         entries.sort_by_key(|e| match e {
             TableEntry::Member { offset, .. } => offset.unwrap_or(u64::MAX),
             TableEntry::Padding { offset, .. } => *offset,
         });
 
-        // Add cache line markers
         let mut last_cache_line: Option<u64> = None;
 
         for entry in &entries {
@@ -147,7 +140,6 @@ impl TableFormatter {
 
         output.push_str(&table.to_string());
 
-        // Summary
         output.push_str(&format!(
             "\n\nSummary: {} useful bytes, {} padding bytes ({:.1}%), cache density: {:.1}%\n",
             layout.metrics.useful_size,

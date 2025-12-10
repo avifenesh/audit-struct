@@ -55,7 +55,6 @@ impl BinaryData {
 
         let dwarf = Dwarf::load(load_section).map_err(|e| Error::Dwarf(e.to_string()))?;
 
-        // Check if we actually have debug info
         let mut units = dwarf.units();
         if units.next().map_err(|e| Error::Dwarf(e.to_string()))?.is_none() {
             return Err(Error::NoDebugInfo);

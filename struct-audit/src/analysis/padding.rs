@@ -9,21 +9,17 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
     for member in &layout.members {
         let member_offset = match member.offset {
             Some(o) => o,
-            None => continue, // Skip members with unknown offset
+            None => continue,
         };
 
-        // Skip members with unknown size for accurate metrics
         let member_size = match member.size {
             Some(s) => s,
             None => {
-                // Unknown size - we can't accurately track current_offset
-                // Still record the member name for after_member tracking
                 last_member_name = Some(member.name.clone());
                 continue;
             }
         };
 
-        // Check for gap before this member
         if member_offset > current_offset {
             let gap_size = member_offset - current_offset;
             padding_holes.push(PaddingHole {
@@ -38,7 +34,6 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
         last_member_name = Some(member.name.clone());
     }
 
-    // Check for tail padding
     if current_offset < layout.size {
         let tail_padding = layout.size - current_offset;
         padding_holes.push(PaddingHole {

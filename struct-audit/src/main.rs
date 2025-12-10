@@ -68,12 +68,10 @@ fn run_inspect(
         return Ok(());
     }
 
-    // Analyze all layouts first (needed for sorting/filtering by metrics)
     for layout in &mut layouts {
         analyze_layout(layout, cache_line_size);
     }
 
-    // Filter by minimum padding
     if let Some(min) = min_padding {
         layouts.retain(|l| l.metrics.padding_bytes >= min);
     }
@@ -83,7 +81,6 @@ fn run_inspect(
         return Ok(());
     }
 
-    // Sort by specified field
     match sort_by {
         SortField::Name => layouts.sort_by(|a, b| a.name.cmp(&b.name)),
         SortField::Size => layouts.sort_by(|a, b| b.size.cmp(&a.size)),
@@ -98,7 +95,6 @@ fn run_inspect(
         }),
     }
 
-    // Limit to top N
     if let Some(n) = top {
         layouts.truncate(n);
     }
