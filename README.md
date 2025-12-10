@@ -57,15 +57,33 @@ struct-audit inspect ./target/debug/myapp --output json
 # Compare layouts between two binaries
 struct-audit diff ./old-binary ./new-binary
 
-# CI mode - fail if padding exceeds budget
-struct-audit check ./target/debug/myapp --max-padding 20
+# Fail CI if regressions found (size or padding increased)
+struct-audit diff ./old-binary ./new-binary --fail-on-regression
+
+# Check against budget constraints from config file
+struct-audit check ./target/debug/myapp --config .struct-audit.yaml
+```
+
+### Budget Config Example
+
+Create `.struct-audit.yaml`:
+
+```yaml
+budgets:
+  HotPathStruct:
+    max_size: 64
+    max_padding: 8
+    max_padding_percent: 10.0
+  CriticalData:
+    max_size: 128
 ```
 
 ## Requirements
 
 - Binary must be compiled with debug information (`-g` flag or `debug = true` in Cargo.toml)
-- Supported formats: ELF (Linux), Mach-O (macOS)
+- Supported formats: ELF (Linux), Mach-O (macOS), PE (Windows with DWARF)
 - On macOS, use the dSYM bundle: `./binary.dSYM/Contents/Resources/DWARF/binary`
+- On Windows, compile with MinGW/GCC or Clang to get DWARF debug info (MSVC PDB not supported)
 
 ## Documentation
 
