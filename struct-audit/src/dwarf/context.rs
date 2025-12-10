@@ -4,6 +4,7 @@ use crate::types::{MemberLayout, SourceLocation, StructLayout};
 use gimli::{AttributeValue, DebuggingInformationEntry, Dwarf, Unit};
 
 use super::TypeResolver;
+use super::expr::{evaluate_member_offset, try_simple_offset};
 
 pub struct DwarfContext<'a> {
     dwarf: &'a Dwarf<DwarfSlice<'a>>,
@@ -139,7 +140,7 @@ impl<'a> DwarfContext<'a> {
     ) -> Result<Option<MemberLayout>> {
         let name = self.get_die_name(unit, entry)?.unwrap_or_else(|| "<anonymous>".to_string());
 
-        let offset = self.get_member_offset(entry)?;
+        let offset = self.get_member_offset(unit, entry)?;
 
         let (type_name, size) = match entry.attr_value(gimli::DW_AT_type) {
             Ok(Some(AttributeValue::UnitRef(type_offset))) => {
@@ -148,11 +149,32 @@ impl<'a> DwarfContext<'a> {
             _ => ("unknown".to_string(), None),
         };
 
-        Ok(Some(MemberLayout::new(name, type_name, offset, size)))
+        let mut member = MemberLayout::new(name, type_name, offset, size);
+
+        // Parse bitfield attributes (DWARF 4 style)
+        if let Ok(Some(AttributeValue::Udata(bit_offset))) =
+            entry.attr_value(gimli::DW_AT_bit_offset)
+        {
+            member.bit_offset = Some(bit_offset);
+        }
+
+        // DWARF 5 style: DW_AT_data_bit_offset (offset from start of containing entity)
+        if let Ok(Some(AttributeValue::Udata(data_bit_offset))) =
+            entry.attr_value(gimli::DW_AT_data_bit_offset)
+        {
+            member.bit_offset = Some(data_bit_offset);
+        }
+
+        if let Ok(Some(AttributeValue::Udata(bit_size))) = entry.attr_value(gimli::DW_AT_bit_size) {
+            member.bit_size = Some(bit_size);
+        }
+
+        Ok(Some(member))
     }
 
     fn get_member_offset(
         &self,
+        unit: &Unit<DwarfSlice<'a>>,
         entry: &DebuggingInformationEntry<DwarfSlice<'a>>,
     ) -> Result<Option<u64>> {
         match entry.attr_value(gimli::DW_AT_data_member_location) {
@@ -162,9 +184,13 @@ impl<'a> DwarfContext<'a> {
             Ok(Some(AttributeValue::Data4(offset))) => Ok(Some(offset as u64)),
             Ok(Some(AttributeValue::Data8(offset))) => Ok(Some(offset)),
             Ok(Some(AttributeValue::Sdata(offset))) if offset >= 0 => Ok(Some(offset as u64)),
-            Ok(Some(AttributeValue::Exprloc(_))) => {
-                // Expression-based offset - not supported in MVP
-                Ok(None)
+            Ok(Some(AttributeValue::Exprloc(expr))) => {
+                // Try simple constant extraction first (fast path)
+                if let Some(offset) = try_simple_offset(expr) {
+                    return Ok(Some(offset));
+                }
+                // Fall back to full expression evaluation
+                evaluate_member_offset(expr, unit.encoding())
             }
             Ok(None) => Ok(None), // Missing offset - don't assume 0 (bitfields, packed structs)
             _ => Ok(None),

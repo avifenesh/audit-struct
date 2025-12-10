@@ -83,3 +83,18 @@ jobs:
 
       - name: Run on test fixture (dSYM)
         run: cargo run -- inspect tests/fixtures/bin/test_simple.dSYM/Contents/Resources/DWARF/test_simple
+
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: struct-audit
+
+      - name: Build
+        run: cargo build
+
+      - name: Run unit tests
+        run: cargo test --lib

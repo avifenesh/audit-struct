@@ -11,7 +11,7 @@ pub enum Error {
     #[error("No debug information found. Compile with -g flag to include DWARF debug info.")]
     NoDebugInfo,
 
-    #[error("Unsupported binary format. Currently only ELF binaries are supported.")]
+    #[error("Unsupported binary format. Supported: ELF, Mach-O, PE.")]
     UnsupportedFormat,
 
     #[error("DWARF parsing error: {0}")]

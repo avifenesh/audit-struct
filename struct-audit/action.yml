@@ -1,0 +1,124 @@
+name: 'struct-audit'
+description: 'Analyze binary memory layouts to detect padding inefficiencies'
+author: 'avifen'
+
+branding:
+  icon: 'cpu'
+  color: 'orange'
+
+inputs:
+  binary:
+    description: 'Path to the binary file to analyze'
+    required: true
+  command:
+    description: 'Command to run: inspect, diff, or check'
+    required: false
+    default: 'inspect'
+  baseline:
+    description: 'Path to baseline binary (for diff command)'
+    required: false
+  config:
+    description: 'Path to config file (for check command)'
+    required: false
+    default: '.struct-audit.yaml'
+  filter:
+    description: 'Filter structs by name (substring match)'
+    required: false
+  output:
+    description: 'Output format: table or json'
+    required: false
+    default: 'table'
+  sort-by:
+    description: 'Sort by: name, size, padding, or padding-pct'
+    required: false
+    default: 'padding'
+  top:
+    description: 'Show only top N structs'
+    required: false
+  min-padding:
+    description: 'Show only structs with at least N bytes of padding'
+    required: false
+  fail-on-regression:
+    description: 'Fail if size or padding increased (for diff command)'
+    required: false
+    default: 'false'
+  version:
+    description: 'Version of struct-audit to use'
+    required: false
+    default: 'latest'
+
+outputs:
+  report:
+    description: 'The struct-audit output'
+    value: ${{ steps.run.outputs.report }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install struct-audit
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          cargo install struct-audit
+        else
+          cargo install struct-audit --version ${{ inputs.version }}
+        fi
+
+    - name: Run struct-audit
+      id: run
+      shell: bash
+      run: |
+        set +e
+
+        ARGS=""
+
+        case "${{ inputs.command }}" in
+          inspect)
+            ARGS="inspect ${{ inputs.binary }}"
+            if [ -n "${{ inputs.filter }}" ]; then
+              ARGS="$ARGS --filter '${{ inputs.filter }}'"
+            fi
+            ARGS="$ARGS --output ${{ inputs.output }}"
+            ARGS="$ARGS --sort-by ${{ inputs.sort-by }}"
+            if [ -n "${{ inputs.top }}" ]; then
+              ARGS="$ARGS --top ${{ inputs.top }}"
+            fi
+            if [ -n "${{ inputs.min-padding }}" ]; then
+              ARGS="$ARGS --min-padding ${{ inputs.min-padding }}"
+            fi
+            ;;
+          diff)
+            if [ -z "${{ inputs.baseline }}" ]; then
+              echo "Error: baseline input is required for diff command"
+              exit 1
+            fi
+            ARGS="diff ${{ inputs.baseline }} ${{ inputs.binary }}"
+            if [ -n "${{ inputs.filter }}" ]; then
+              ARGS="$ARGS --filter '${{ inputs.filter }}'"
+            fi
+            ARGS="$ARGS --output ${{ inputs.output }}"
+            if [ "${{ inputs.fail-on-regression }}" = "true" ]; then
+              ARGS="$ARGS --fail-on-regression"
+            fi
+            ;;
+          check)
+            ARGS="check ${{ inputs.binary }} --config ${{ inputs.config }}"
+            ;;
+          *)
+            echo "Error: unknown command '${{ inputs.command }}'"
+            exit 1
+            ;;
+        esac
+
+        echo "Running: struct-audit $ARGS"
+        OUTPUT=$(eval "struct-audit $ARGS" 2>&1)
+        EXIT_CODE=$?
+
+        echo "$OUTPUT"
+
+        # Set output for use in subsequent steps
+        echo "report<<EOF" >> $GITHUB_OUTPUT
+        echo "$OUTPUT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+        exit $EXIT_CODE

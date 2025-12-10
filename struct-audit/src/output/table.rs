@@ -72,6 +72,8 @@ impl TableFormatter {
                 size: member.size,
                 type_name: &member.type_name,
                 name: &member.name,
+                bit_offset: member.bit_offset,
+                bit_size: member.bit_size,
             });
         }
 
@@ -109,10 +111,21 @@ impl TableFormatter {
             last_cache_line = Some(current_cache_line);
 
             match entry {
-                TableEntry::Member { offset, size, type_name, name } => {
+                TableEntry::Member { offset, size, type_name, name, bit_offset, bit_size } => {
+                    let offset_str = match (offset, bit_offset) {
+                        (Some(o), Some(bo)) => format!("{}:{}", o, bo),
+                        (Some(o), None) => o.to_string(),
+                        (None, Some(bo)) => format!("?:{}", bo),
+                        (None, None) => "?".to_string(),
+                    };
+                    let size_str = match (size, bit_size) {
+                        (_, Some(bs)) => format!("{}b", bs),
+                        (Some(s), None) => s.to_string(),
+                        (None, None) => "?".to_string(),
+                    };
                     table.add_row(vec![
-                        Cell::new(offset.map(|o| o.to_string()).unwrap_or_else(|| "?".to_string())),
-                        Cell::new(size.map(|s| s.to_string()).unwrap_or_else(|| "?".to_string())),
+                        Cell::new(offset_str),
+                        Cell::new(size_str),
                         Cell::new(type_name.to_string()),
                         Cell::new(name.to_string()),
                     ]);
@@ -153,6 +166,16 @@ impl TableFormatter {
 }
 
 enum TableEntry<'a> {
-    Member { offset: Option<u64>, size: Option<u64>, type_name: &'a str, name: &'a str },
-    Padding { offset: u64, size: u64 },
+    Member {
+        offset: Option<u64>,
+        size: Option<u64>,
+        type_name: &'a str,
+        name: &'a str,
+        bit_offset: Option<u64>,
+        bit_size: Option<u64>,
+    },
+    Padding {
+        offset: u64,
+        size: u64,
+    },
 }

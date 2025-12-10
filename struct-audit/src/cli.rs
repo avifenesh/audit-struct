@@ -58,6 +58,48 @@ pub enum Commands {
         #[arg(long)]
         pretty: bool,
     },
+
+    /// Compare struct layouts between two binaries
+    Diff {
+        /// Path to the old (baseline) binary
+        #[arg(value_name = "OLD")]
+        old: PathBuf,
+
+        /// Path to the new binary
+        #[arg(value_name = "NEW")]
+        new: PathBuf,
+
+        /// Filter structs by name (substring match)
+        #[arg(short, long)]
+        filter: Option<String>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value = "table")]
+        output: OutputFormat,
+
+        /// Cache line size in bytes (must be > 0)
+        #[arg(long, default_value = "64", value_parser = clap::value_parser!(u32).range(1..))]
+        cache_line: u32,
+
+        /// Exit with error code 1 if any regressions found (size or padding increased)
+        #[arg(long)]
+        fail_on_regression: bool,
+    },
+
+    /// Check struct layouts against budget constraints
+    Check {
+        /// Path to the binary file to analyze
+        #[arg(value_name = "BINARY")]
+        binary: PathBuf,
+
+        /// Path to config file (.struct-audit.yaml)
+        #[arg(short, long, default_value = ".struct-audit.yaml")]
+        config: PathBuf,
+
+        /// Cache line size in bytes (must be > 0)
+        #[arg(long, default_value = "64", value_parser = clap::value_parser!(u32).range(1..))]
+        cache_line: u32,
+    },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]

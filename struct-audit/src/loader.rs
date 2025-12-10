@@ -27,7 +27,10 @@ impl BinaryData {
     pub fn load_dwarf(&self) -> Result<LoadedDwarf<'_>> {
         let object = object::File::parse(&*self.mmap)?;
 
-        if !matches!(object.format(), object::BinaryFormat::Elf | object::BinaryFormat::MachO) {
+        if !matches!(
+            object.format(),
+            object::BinaryFormat::Elf | object::BinaryFormat::MachO | object::BinaryFormat::Pe
+        ) {
             return Err(Error::UnsupportedFormat);
         }
 

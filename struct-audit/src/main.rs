@@ -1,9 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 use std::path::Path;
 use struct_audit::{
     BinaryData, Cli, Commands, DwarfContext, JsonFormatter, OutputFormat, SortField,
-    TableFormatter, analyze_layout,
+    TableFormatter, analyze_layout, diff_layouts,
 };
 
 fn main() -> Result<()> {
@@ -32,6 +32,15 @@ fn main() -> Result<()> {
                 cache_line,
                 pretty,
             )?;
+        }
+        Commands::Diff { old, new, filter, output, cache_line, fail_on_regression } => {
+            let has_regression = run_diff(&old, &new, filter.as_deref(), output, cache_line)?;
+            if fail_on_regression && has_regression {
+                std::process::exit(1);
+            }
+        }
+        Commands::Check { binary, config, cache_line } => {
+            run_check(&binary, &config, cache_line)?;
         }
     }
 
@@ -113,4 +122,196 @@ fn run_inspect(
     println!("{}", output_str);
 
     Ok(())
+}
+
+fn run_diff(
+    old_path: &Path,
+    new_path: &Path,
+    filter: Option<&str>,
+    output_format: OutputFormat,
+    cache_line_size: u32,
+) -> Result<bool> {
+    let old_binary = BinaryData::load(old_path)
+        .with_context(|| format!("Failed to load old binary: {}", old_path.display()))?;
+    let new_binary = BinaryData::load(new_path)
+        .with_context(|| format!("Failed to load new binary: {}", new_path.display()))?;
+
+    let old_loaded = old_binary.load_dwarf().context("Failed to load DWARF from old binary")?;
+    let new_loaded = new_binary.load_dwarf().context("Failed to load DWARF from new binary")?;
+
+    let old_dwarf = DwarfContext::new(&old_loaded);
+    let new_dwarf = DwarfContext::new(&new_loaded);
+
+    let mut old_layouts = old_dwarf.find_structs(filter)?;
+    let mut new_layouts = new_dwarf.find_structs(filter)?;
+
+    for layout in &mut old_layouts {
+        analyze_layout(layout, cache_line_size);
+    }
+    for layout in &mut new_layouts {
+        analyze_layout(layout, cache_line_size);
+    }
+
+    let diff = diff_layouts(&old_layouts, &new_layouts);
+
+    match output_format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&diff)?);
+        }
+        OutputFormat::Table => {
+            print_diff_table(&diff);
+        }
+    }
+
+    Ok(diff.has_regressions())
+}
+
+fn print_diff_table(diff: &struct_audit::DiffResult) {
+    use colored::Colorize;
+
+    if !diff.has_changes() {
+        println!("No changes detected.");
+        return;
+    }
+
+    if !diff.removed.is_empty() {
+        println!("{}", "Removed structs:".red().bold());
+        for s in &diff.removed {
+            println!("  - {} ({} bytes, {} padding)", s.name, s.size, s.padding_bytes);
+        }
+        println!();
+    }
+
+    if !diff.added.is_empty() {
+        println!("{}", "Added structs:".green().bold());
+        for s in &diff.added {
+            println!("  + {} ({} bytes, {} padding)", s.name, s.size, s.padding_bytes);
+        }
+        println!();
+    }
+
+    if !diff.changed.is_empty() {
+        println!("{}", "Changed structs:".yellow().bold());
+        for c in &diff.changed {
+            let size_indicator = match c.size_delta.cmp(&0) {
+                std::cmp::Ordering::Greater => format!("+{}", c.size_delta).red().to_string(),
+                std::cmp::Ordering::Less => format!("{}", c.size_delta).green().to_string(),
+                std::cmp::Ordering::Equal => "0".to_string(),
+            };
+            let pad_indicator = match c.padding_delta.cmp(&0) {
+                std::cmp::Ordering::Greater => format!("+{}", c.padding_delta).red().to_string(),
+                std::cmp::Ordering::Less => format!("{}", c.padding_delta).green().to_string(),
+                std::cmp::Ordering::Equal => "0".to_string(),
+            };
+
+            println!(
+                "  ~ {} (size: {} -> {} [{}], padding: {} -> {} [{}])",
+                c.name,
+                c.old_size,
+                c.new_size,
+                size_indicator,
+                c.old_padding,
+                c.new_padding,
+                pad_indicator
+            );
+
+            for mc in &c.member_changes {
+                let prefix = match mc.kind {
+                    struct_audit::diff::MemberChangeKind::Added => "+".green(),
+                    struct_audit::diff::MemberChangeKind::Removed => "-".red(),
+                    _ => "~".yellow(),
+                };
+                println!("      {} {}: {}", prefix, mc.name, mc.details);
+            }
+        }
+        println!();
+    }
+
+    println!(
+        "Summary: {} added, {} removed, {} changed, {} unchanged",
+        diff.added.len(),
+        diff.removed.len(),
+        diff.changed.len(),
+        diff.unchanged_count
+    );
+}
+
+fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Result<()> {
+    if !config_path.exists() {
+        bail!(
+            "Config file not found: {}\n\nCreate a .struct-audit.yaml with budget constraints:\n\n\
+            budgets:\n  MyStruct:\n    max_size: 64\n    max_padding: 8",
+            config_path.display()
+        );
+    }
+
+    let config_str = std::fs::read_to_string(config_path)
+        .with_context(|| format!("Failed to read config: {}", config_path.display()))?;
+
+    let config: Config = serde_yaml::from_str(&config_str)
+        .with_context(|| format!("Failed to parse config: {}", config_path.display()))?;
+
+    let binary = BinaryData::load(binary_path)
+        .with_context(|| format!("Failed to load binary: {}", binary_path.display()))?;
+
+    let loaded = binary.load_dwarf().context("Failed to load DWARF debug info")?;
+    let dwarf = DwarfContext::new(&loaded);
+
+    let mut layouts = dwarf.find_structs(None)?;
+    for layout in &mut layouts {
+        analyze_layout(layout, cache_line_size);
+    }
+
+    let mut violations = Vec::new();
+
+    for layout in &layouts {
+        if let Some(budget) = config.budgets.get(&layout.name) {
+            if let Some(max_size) = budget.max_size
+                && layout.size > max_size
+            {
+                violations.push(format!(
+                    "{}: size {} exceeds budget {} (+{} bytes)",
+                    layout.name,
+                    layout.size,
+                    max_size,
+                    layout.size - max_size
+                ));
+            }
+            if let Some(max_padding) = budget.max_padding
+                && layout.metrics.padding_bytes > max_padding
+            {
+                violations.push(format!(
+                    "{}: padding {} exceeds budget {} (+{} bytes)",
+                    layout.name,
+                    layout.metrics.padding_bytes,
+                    max_padding,
+                    layout.metrics.padding_bytes - max_padding
+                ));
+            }
+        }
+    }
+
+    if violations.is_empty() {
+        println!("✓ All structs within budget constraints");
+        Ok(())
+    } else {
+        use colored::Colorize;
+        println!("{}", "Budget violations:".red().bold());
+        for v in &violations {
+            println!("  ✗ {}", v);
+        }
+        std::process::exit(1);
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct Config {
+    #[serde(default)]
+    budgets: std::collections::HashMap<String, Budget>,
+}
+
+#[derive(serde::Deserialize)]
+struct Budget {
+    max_size: Option<u64>,
+    max_padding: Option<u64>,
 }
