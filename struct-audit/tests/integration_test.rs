@@ -269,3 +269,210 @@ fn test_cli_min_padding_filter() {
         assert!(padding >= 1, "Struct has less than min padding");
     }
 }
+
+// ============================================================================
+// Check command tests
+// ============================================================================
+
+fn create_temp_config(content: &str) -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let temp_dir = std::env::temp_dir();
+    let unique_id = COUNTER.fetch_add(1, Ordering::SeqCst);
+    let config_path = temp_dir.join(format!(
+        "struct-audit-test-{}-{}.yaml",
+        std::process::id(),
+        unique_id
+    ));
+    std::fs::write(&config_path, content).expect("Failed to write temp config");
+    config_path
+}
+
+#[test]
+fn test_check_budget_pass() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let config = create_temp_config(
+        r#"
+budgets:
+  NoPadding:
+    max_size: 100
+    max_padding: 10
+    max_padding_percent: 50.0
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(
+        output.status.success(),
+        "Check should pass: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("All structs within budget"));
+}
+
+#[test]
+fn test_check_budget_fail_size() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // InternalPadding is 16 bytes, so max_size: 10 should fail
+    let config = create_temp_config(
+        r#"
+budgets:
+  InternalPadding:
+    max_size: 10
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Check should fail for size violation");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("size") && stderr.contains("exceeds budget"),
+        "Should mention size violation: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_check_budget_fail_padding_percent() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // InternalPadding has 37.5% padding, so max_padding_percent: 5.0 should fail
+    let config = create_temp_config(
+        r#"
+budgets:
+  InternalPadding:
+    max_padding_percent: 5.0
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Check should fail for padding percent violation");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("padding") && stderr.contains("%"),
+        "Should mention padding percent violation: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_check_invalid_negative_percent() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let config = create_temp_config(
+        r#"
+budgets:
+  NoPadding:
+    max_padding_percent: -5.0
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Check should fail for negative percent");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("negative") || stderr.contains("Invalid budget"),
+        "Should reject negative percent: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_check_invalid_over_100_percent() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let config = create_temp_config(
+        r#"
+budgets:
+  NoPadding:
+    max_padding_percent: 150.0
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Check should fail for percent > 100");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("exceed 100") || stderr.contains("Invalid budget"),
+        "Should reject percent > 100: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_check_invalid_zero_size() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let config = create_temp_config(
+        r#"
+budgets:
+  NoPadding:
+    max_size: 0
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Check should fail for max_size: 0");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("greater than 0") || stderr.contains("Invalid budget"),
+        "Should reject max_size: 0: {}",
+        stderr
+    );
+}

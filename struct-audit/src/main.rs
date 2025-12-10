@@ -251,6 +251,11 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
     let config: Config = serde_yaml::from_str(&config_str)
         .with_context(|| format!("Failed to parse config: {}", config_path.display()))?;
 
+    // Validate all budgets
+    for (name, budget) in &config.budgets {
+        budget.validate(name)?;
+    }
+
     let binary = BinaryData::load(binary_path)
         .with_context(|| format!("Failed to load binary: {}", binary_path.display()))?;
 
@@ -307,16 +312,18 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
                     layout.metrics.padding_bytes - max_padding
                 ));
             }
-            if let Some(max_pct) = budget.max_padding_percent
-                && layout.metrics.padding_percentage > max_pct
-            {
-                violations.push(format!(
-                    "{}: padding {:.1}% exceeds budget {:.1}% (+{:.1}%)",
-                    layout.name,
-                    layout.metrics.padding_percentage,
-                    max_pct,
-                    layout.metrics.padding_percentage - max_pct
-                ));
+            if let Some(max_pct) = budget.max_padding_percent {
+                // Use epsilon for float comparison to avoid precision issues
+                const EPSILON: f64 = 1e-6;
+                if layout.metrics.padding_percentage > max_pct + EPSILON {
+                    violations.push(format!(
+                        "{}: padding {:.1}% exceeds budget {:.1}% (+{:.1} percentage points)",
+                        layout.name,
+                        layout.metrics.padding_percentage,
+                        max_pct,
+                        layout.metrics.padding_percentage - max_pct
+                    ));
+                }
             }
         }
     }
@@ -345,4 +352,34 @@ struct Budget {
     max_size: Option<u64>,
     max_padding: Option<u64>,
     max_padding_percent: Option<f64>,
+}
+
+impl Budget {
+    fn validate(&self, name: &str) -> Result<()> {
+        if let Some(max_pct) = self.max_padding_percent {
+            if !max_pct.is_finite() {
+                bail!("Invalid budget for '{}': max_padding_percent must be a finite number", name);
+            }
+            if max_pct < 0.0 {
+                bail!(
+                    "Invalid budget for '{}': max_padding_percent cannot be negative (got {:.1})",
+                    name,
+                    max_pct
+                );
+            }
+            if max_pct > 100.0 {
+                bail!(
+                    "Invalid budget for '{}': max_padding_percent cannot exceed 100 (got {:.1})",
+                    name,
+                    max_pct
+                );
+            }
+        }
+        if let Some(max_size) = self.max_size
+            && max_size == 0
+        {
+            bail!("Invalid budget for '{}': max_size must be greater than 0", name);
+        }
+        Ok(())
+    }
 }
