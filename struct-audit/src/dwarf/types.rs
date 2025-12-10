@@ -198,13 +198,13 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
         {
             let child_entry = child.entry();
             if child_entry.tag() == gimli::DW_TAG_subrange_type {
-                if let Ok(Some(AttributeValue::Udata(count))) =
-                    child_entry.attr_value(gimli::DW_AT_count)
-                {
+                // Try DW_AT_count first (can be various data encodings)
+                if let Some(count) = self.extract_count_attr(child_entry, gimli::DW_AT_count)? {
                     return Ok(Some(count));
                 }
-                if let Ok(Some(AttributeValue::Udata(upper))) =
-                    child_entry.attr_value(gimli::DW_AT_upper_bound)
+                // Fall back to DW_AT_upper_bound (0-indexed, so add 1)
+                if let Some(upper) =
+                    self.extract_count_attr(child_entry, gimli::DW_AT_upper_bound)?
                 {
                     return Ok(Some(upper + 1));
                 }
@@ -212,5 +212,21 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
         }
 
         Ok(None)
+    }
+
+    fn extract_count_attr(
+        &self,
+        entry: &gimli::DebuggingInformationEntry<DwarfSlice<'a>>,
+        attr: gimli::DwAt,
+    ) -> Result<Option<u64>> {
+        match entry.attr_value(attr) {
+            Ok(Some(AttributeValue::Udata(v))) => Ok(Some(v)),
+            Ok(Some(AttributeValue::Data1(v))) => Ok(Some(v as u64)),
+            Ok(Some(AttributeValue::Data2(v))) => Ok(Some(v as u64)),
+            Ok(Some(AttributeValue::Data4(v))) => Ok(Some(v as u64)),
+            Ok(Some(AttributeValue::Data8(v))) => Ok(Some(v)),
+            Ok(Some(AttributeValue::Sdata(v))) if v >= 0 => Ok(Some(v as u64)),
+            _ => Ok(None),
+        }
     }
 }
