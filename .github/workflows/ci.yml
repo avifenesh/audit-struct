@@ -101,5 +101,14 @@ jobs:
       - name: Build
         run: cargo build
 
-      - name: Run unit tests
-        run: cargo test --lib
+      - name: Compile test fixture (MinGW with DWARF debug info)
+        shell: bash
+        run: |
+          mkdir -p tests/fixtures/bin
+          gcc -g -o tests/fixtures/bin/test_simple.exe tests/fixtures/test_simple.c
+
+      - name: Run tests
+        run: cargo test
+
+      - name: Run on test fixture
+        run: cargo run -- inspect tests/fixtures/bin/test_simple.exe

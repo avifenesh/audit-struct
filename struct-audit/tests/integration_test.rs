@@ -2,6 +2,7 @@ use struct_audit::{BinaryData, DwarfContext, analyze_layout};
 
 /// Get the path to the test fixture binary.
 /// On macOS, debug info is in a separate dSYM bundle.
+/// On Windows, binaries have .exe extension.
 fn get_fixture_path() -> Option<std::path::PathBuf> {
     // Try dSYM path first (macOS)
     let dsym_path = std::path::Path::new(
@@ -11,7 +12,13 @@ fn get_fixture_path() -> Option<std::path::PathBuf> {
         return Some(dsym_path.to_path_buf());
     }
 
-    // Fall back to direct binary (Linux/Windows with embedded debug info)
+    // Try Windows PE binary with .exe extension
+    let exe_path = std::path::Path::new("tests/fixtures/bin/test_simple.exe");
+    if exe_path.exists() {
+        return Some(exe_path.to_path_buf());
+    }
+
+    // Fall back to direct binary (Linux with embedded debug info)
     let direct_path = std::path::Path::new("tests/fixtures/bin/test_simple");
     if direct_path.exists() {
         return Some(direct_path.to_path_buf());

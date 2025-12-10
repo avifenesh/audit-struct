@@ -58,7 +58,10 @@ pub fn evaluate_member_offset(
 
 /// Try to extract a simple constant offset from an expression.
 /// This handles the most common case: DW_OP_plus_uconst N
-pub fn try_simple_offset(expr: Expression<DwarfSlice<'_>>, encoding: gimli::Encoding) -> Option<u64> {
+pub fn try_simple_offset(
+    expr: Expression<DwarfSlice<'_>>,
+    encoding: gimli::Encoding,
+) -> Option<u64> {
     let mut ops = expr.operations(encoding);
 
     // Check for simple DW_OP_plus_uconst pattern

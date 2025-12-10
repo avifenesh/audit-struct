@@ -240,7 +240,7 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
     if !config_path.exists() {
         bail!(
             "Config file not found: {}\n\nCreate a .struct-audit.yaml with budget constraints:\n\n\
-            budgets:\n  MyStruct:\n    max_size: 64\n    max_padding: 8",
+            budgets:\n  MyStruct:\n    max_size: 64\n    max_padding: 8\n    max_padding_percent: 10.0",
             config_path.display()
         );
     }
@@ -307,6 +307,17 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
                     layout.metrics.padding_bytes - max_padding
                 ));
             }
+            if let Some(max_pct) = budget.max_padding_percent
+                && layout.metrics.padding_percentage > max_pct
+            {
+                violations.push(format!(
+                    "{}: padding {:.1}% exceeds budget {:.1}% (+{:.1}%)",
+                    layout.name,
+                    layout.metrics.padding_percentage,
+                    max_pct,
+                    layout.metrics.padding_percentage - max_pct
+                ));
+            }
         }
     }
 
@@ -333,4 +344,5 @@ struct Config {
 struct Budget {
     max_size: Option<u64>,
     max_padding: Option<u64>,
+    max_padding_percent: Option<f64>,
 }

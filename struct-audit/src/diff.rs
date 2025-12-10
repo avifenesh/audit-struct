@@ -106,9 +106,9 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
 
 fn diff_struct(old: &StructLayout, new: &StructLayout) -> Option<StructChange> {
     // Use saturating conversion to avoid overflow on extremely large u64 values
-    let size_delta = i64::try_from(new.size).unwrap_or(i64::MAX).saturating_sub(
-        i64::try_from(old.size).unwrap_or(i64::MAX),
-    );
+    let size_delta = i64::try_from(new.size)
+        .unwrap_or(i64::MAX)
+        .saturating_sub(i64::try_from(old.size).unwrap_or(i64::MAX));
     let padding_delta = i64::try_from(new.metrics.padding_bytes)
         .unwrap_or(i64::MAX)
         .saturating_sub(i64::try_from(old.metrics.padding_bytes).unwrap_or(i64::MAX));
