@@ -148,12 +148,13 @@ impl<'a> DwarfContext<'a> {
             }
             Ok(Some(AttributeValue::DebugInfoRef(debug_info_offset))) => {
                 // Convert section offset to unit offset
-                let unit_offset = gimli::UnitOffset(
-                    debug_info_offset
-                        .0
-                        .saturating_sub(unit.header.offset().as_debug_info_offset().unwrap().0),
-                );
-                type_resolver.resolve_type(unit_offset)?
+                if let Some(unit_debug_offset) = unit.header.offset().as_debug_info_offset() {
+                    let unit_offset =
+                        gimli::UnitOffset(debug_info_offset.0.saturating_sub(unit_debug_offset.0));
+                    type_resolver.resolve_type(unit_offset)?
+                } else {
+                    ("unknown".to_string(), None)
+                }
             }
             _ => ("unknown".to_string(), None),
         };

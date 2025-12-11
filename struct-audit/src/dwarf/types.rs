@@ -179,12 +179,13 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
             Ok(Some(AttributeValue::UnitRef(offset))) => Ok(Some(offset)),
             Ok(Some(AttributeValue::DebugInfoRef(debug_info_offset))) => {
                 // Convert section offset to unit offset
-                let unit_offset = UnitOffset(
-                    debug_info_offset
-                        .0
-                        .saturating_sub(self.unit.header.offset().as_debug_info_offset().unwrap().0),
-                );
-                Ok(Some(unit_offset))
+                if let Some(unit_debug_offset) = self.unit.header.offset().as_debug_info_offset() {
+                    let unit_offset =
+                        UnitOffset(debug_info_offset.0.saturating_sub(unit_debug_offset.0));
+                    Ok(Some(unit_offset))
+                } else {
+                    Ok(None)
+                }
             }
             _ => Ok(None),
         }
