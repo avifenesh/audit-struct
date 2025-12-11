@@ -574,3 +574,314 @@ fn test_diff_filter() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+/// Get path to the modified test fixture for diff testing
+fn get_modified_fixture_path() -> Option<std::path::PathBuf> {
+    let dsym_path = std::path::Path::new(
+        "tests/fixtures/bin/test_modified.dSYM/Contents/Resources/DWARF/test_modified",
+    );
+    if dsym_path.exists() {
+        return Some(dsym_path.to_path_buf());
+    }
+
+    let exe_path = std::path::Path::new("tests/fixtures/bin/test_modified.exe");
+    if exe_path.exists() {
+        return Some(exe_path.to_path_buf());
+    }
+
+    let direct_path = std::path::Path::new("tests/fixtures/bin/test_modified");
+    if direct_path.exists() {
+        return Some(direct_path.to_path_buf());
+    }
+
+    None
+}
+
+#[test]
+fn test_diff_detects_added_structs() {
+    let old_path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+    let new_path = match get_modified_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "diff",
+            old_path.to_str().unwrap(),
+            new_path.to_str().unwrap(),
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run diff command");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+
+    let added = parsed["added"].as_array().unwrap();
+    assert!(!added.is_empty(), "Should detect added structs");
+    assert!(added.iter().any(|s| s["name"] == "NewStruct"), "Should detect NewStruct as added");
+}
+
+#[test]
+fn test_diff_detects_removed_structs() {
+    let old_path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+    let new_path = match get_modified_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "diff",
+            old_path.to_str().unwrap(),
+            new_path.to_str().unwrap(),
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run diff command");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+
+    let removed = parsed["removed"].as_array().unwrap();
+    assert!(!removed.is_empty(), "Should detect removed structs");
+    assert!(
+        removed.iter().any(|s| s["name"] == "Inner" || s["name"] == "Outer"),
+        "Should detect Inner or Outer as removed"
+    );
+}
+
+#[test]
+fn test_diff_detects_changed_structs() {
+    let old_path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+    let new_path = match get_modified_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "diff",
+            old_path.to_str().unwrap(),
+            new_path.to_str().unwrap(),
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run diff command");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+
+    let changed = parsed["changed"].as_array().unwrap();
+    assert!(!changed.is_empty(), "Should detect changed structs");
+
+    // NoPadding should show size increase (added field d)
+    let no_padding = changed.iter().find(|s| s["name"] == "NoPadding");
+    assert!(no_padding.is_some(), "NoPadding should be in changed list");
+    let np = no_padding.unwrap();
+    assert_eq!(np["size_delta"], 4, "NoPadding should have grown by 4 bytes");
+}
+
+#[test]
+fn test_diff_fail_on_regression() {
+    let old_path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+    let new_path = match get_modified_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // With --fail-on-regression, should fail if structs grew
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "diff",
+            old_path.to_str().unwrap(),
+            new_path.to_str().unwrap(),
+            "--fail-on-regression",
+        ])
+        .output()
+        .expect("Failed to run diff command");
+
+    // NoPadding grew from 12 to 16 bytes, so this should fail
+    assert!(!output.status.success(), "Should fail with --fail-on-regression when structs grow");
+}
+
+#[test]
+fn test_check_budget_fail_max_padding_bytes() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // InternalPadding has 6 bytes of padding, so max_padding: 2 should fail
+    let config = create_temp_config(
+        r#"
+budgets:
+  InternalPadding:
+    max_padding: 2
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Check should fail for padding bytes violation");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("padding") && stderr.contains("exceeds budget"),
+        "Should mention padding violation: {}",
+        stderr
+    );
+}
+
+// ============================================================================
+// Error path tests
+// ============================================================================
+
+#[test]
+fn test_inspect_nonexistent_file() {
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "inspect", "/nonexistent/path/to/binary"])
+        .output()
+        .expect("Failed to run inspect command");
+
+    assert!(!output.status.success(), "Should fail for nonexistent file");
+}
+
+#[test]
+fn test_check_nonexistent_config() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "check",
+            path.to_str().unwrap(),
+            "--config",
+            "/nonexistent/config.yaml",
+        ])
+        .output()
+        .expect("Failed to run check command");
+
+    assert!(!output.status.success(), "Should fail for nonexistent config");
+}
+
+#[test]
+fn test_check_invalid_yaml_config() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let config = create_temp_config("this is not valid yaml: [[[");
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Should fail for invalid YAML");
+}
+
+#[test]
+fn test_check_nan_padding_percent() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // YAML parses .nan as NaN
+    let config = create_temp_config(
+        r#"
+budgets:
+  NoPadding:
+    max_padding_percent: .nan
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Should fail for NaN padding percent");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("finite") || stderr.contains("Invalid"),
+        "Should reject NaN: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_check_infinity_padding_percent() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // YAML parses .inf as infinity
+    let config = create_temp_config(
+        r#"
+budgets:
+  NoPadding:
+    max_padding_percent: .inf
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Should fail for infinity padding percent");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("finite") || stderr.contains("Invalid") || stderr.contains("exceed 100"),
+        "Should reject infinity: {}",
+        stderr
+    );
+}

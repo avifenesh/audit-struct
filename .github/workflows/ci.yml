@@ -34,10 +34,11 @@ jobs:
       - name: Build
         run: cargo build --release
 
-      - name: Compile test fixture
+      - name: Compile test fixtures
         run: |
           mkdir -p tests/fixtures/bin
           gcc -g -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c
+          gcc -g -o tests/fixtures/bin/test_modified tests/fixtures/test_modified.c
 
       - name: Run tests
         run: cargo test
@@ -54,10 +55,11 @@ jobs:
       - name: Build
         run: cargo build
 
-      - name: Compile test fixture
+      - name: Compile test fixtures
         run: |
           mkdir -p tests/fixtures/bin
           gcc -g -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c
+          gcc -g -o tests/fixtures/bin/test_modified tests/fixtures/test_modified.c
 
       - name: Run tests
         run: cargo test
@@ -77,12 +79,14 @@ jobs:
       - name: Build
         run: cargo build
 
-      - name: Compile test fixture
+      - name: Compile test fixtures
         run: |
           mkdir -p tests/fixtures/bin
           # Compile with -save-temps to keep object file for dsymutil
           clang -g -save-temps -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c
           dsymutil tests/fixtures/bin/test_simple
+          clang -g -save-temps -o tests/fixtures/bin/test_modified tests/fixtures/test_modified.c
+          dsymutil tests/fixtures/bin/test_modified
           # Verify dSYM was created with debug info
           if ! dwarfdump --debug-info tests/fixtures/bin/test_simple.dSYM 2>/dev/null | grep -q DW_TAG; then
             echo "ERROR: No DWARF debug info found in dSYM"
@@ -108,17 +112,18 @@ jobs:
       - name: Build
         run: cargo build
 
-      - name: Compile test fixture (MinGW with DWARF debug info)
+      - name: Compile test fixtures (MinGW with DWARF debug info)
         shell: bash
         run: |
           mkdir -p tests/fixtures/bin
           gcc -g -o tests/fixtures/bin/test_simple.exe tests/fixtures/test_simple.c
+          gcc -g -o tests/fixtures/bin/test_modified.exe tests/fixtures/test_modified.c
           # Verify compilation succeeded
-          if [ ! -f tests/fixtures/bin/test_simple.exe ]; then
-            echo "ERROR: Failed to compile test fixture"
+          if [ ! -f tests/fixtures/bin/test_simple.exe ] || [ ! -f tests/fixtures/bin/test_modified.exe ]; then
+            echo "ERROR: Failed to compile test fixtures"
             exit 1
           fi
-          echo "Test fixture compiled successfully"
+          echo "Test fixtures compiled successfully"
 
       - name: Run tests
         run: cargo test
