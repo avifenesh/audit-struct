@@ -1,12 +1,24 @@
 [package]
 name = "struct-audit"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+rust-version = "1.85"
 description = "Analyze binary memory layouts to detect padding inefficiencies"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/avifen/struct-audit"
+repository = "https://github.com/avifenesh/audit-struct"
+homepage = "https://github.com/avifenesh/audit-struct"
+documentation = "https://docs.rs/struct-audit"
+readme = "README.md"
 keywords = ["memory", "layout", "padding", "dwarf", "optimization"]
-categories = ["command-line-utilities", "development-tools::debugging"]
+categories = ["command-line-utilities", "development-tools::debugging", "development-tools::profiling"]
+authors = ["Avi Fenesh"]
+exclude = [
+    "tests/fixtures/bin/",
+    "tests/fixtures/rust_test/target/",
+    "tests/fixtures/multifile/*.o",
+    "tests/fixtures/multifile/*.dSYM/",
+    ".github/",
+]
 
 [dependencies]
 gimli = "0.32"

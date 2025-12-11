@@ -99,6 +99,43 @@ struct InternalPadding (16 bytes, 37.5% padding, 1 cache line)
 Summary: 10 useful bytes, 6 padding bytes (37.5%), cache density: 15.6%
 ```
 
+## CI Integration
+
+Add struct-audit to your GitHub Actions workflow:
+
+```yaml
+name: Memory Layout Check
+
+on: [push, pull_request]
+
+jobs:
+  struct-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install struct-audit
+        run: cargo install struct-audit
+
+      - name: Build with debug info
+        run: cargo build  # debug profile includes DWARF by default
+
+      - name: Check struct budgets
+        run: struct-audit check ./target/debug/myapp --config .struct-audit.yaml
+
+      # Optional: Compare against main branch
+      - name: Diff against baseline
+        if: github.event_name == 'pull_request'
+        run: |
+          # Build baseline from main
+          git fetch origin main
+          git checkout origin/main -- .
+          cargo build --target-dir target-baseline
+          git checkout -
+          # Compare
+          struct-audit diff ./target-baseline/debug/myapp ./target/debug/myapp --fail-on-regression
+```
+
 ## Requirements
 
 - Binary must be compiled with debug information (`-g` flag)
