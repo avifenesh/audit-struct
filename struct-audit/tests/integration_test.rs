@@ -885,3 +885,133 @@ budgets:
         stderr
     );
 }
+
+// ============================================================================
+// C++ template tests
+// ============================================================================
+
+fn get_cpp_fixture_path() -> Option<std::path::PathBuf> {
+    let dsym_path = std::path::Path::new(
+        "tests/fixtures/bin/test_cpp_templates.dSYM/Contents/Resources/DWARF/test_cpp_templates",
+    );
+    if dsym_path.exists() {
+        return Some(dsym_path.to_path_buf());
+    }
+
+    let exe_path = std::path::Path::new("tests/fixtures/bin/test_cpp_templates.exe");
+    if exe_path.exists() {
+        return Some(exe_path.to_path_buf());
+    }
+
+    let direct_path = std::path::Path::new("tests/fixtures/bin/test_cpp_templates");
+    if direct_path.exists() {
+        return Some(direct_path.to_path_buf());
+    }
+
+    None
+}
+
+#[test]
+fn test_cpp_simple_template() {
+    let path = match get_cpp_fixture_path() {
+        Some(p) => p,
+        None => return, // Skip if not compiled
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "inspect",
+            path.to_str().unwrap(),
+            "--filter",
+            "Container<int>",
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run inspect");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+    let structs = parsed["structs"].as_array().unwrap();
+
+    assert!(!structs.is_empty(), "Should find Container<int>");
+    let container = &structs[0];
+    assert_eq!(container["name"], "Container<int>");
+    assert_eq!(container["size"], 12);
+
+    // Check members have proper types (not "unknown")
+    let members = container["members"].as_array().unwrap();
+    let value_member = members.iter().find(|m| m["name"] == "value").unwrap();
+    assert_eq!(value_member["type_name"], "int", "Template member should have resolved type");
+}
+
+#[test]
+fn test_cpp_nested_templates() {
+    let path = match get_cpp_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "inspect",
+            path.to_str().unwrap(),
+            "--filter",
+            "MapEntry",
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run inspect");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+    let structs = parsed["structs"].as_array().unwrap();
+
+    // Should find MapEntry with nested Vector template
+    let complex = structs.iter().find(|s| s["name"].as_str().unwrap().contains("Vector"));
+    assert!(complex.is_some(), "Should find MapEntry with nested Vector template");
+}
+
+#[test]
+fn test_cpp_template_padding_detection() {
+    let path = match get_cpp_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "inspect",
+            path.to_str().unwrap(),
+            "--filter",
+            "Triple<char, int, char>",
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run inspect");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+    let structs = parsed["structs"].as_array().unwrap();
+
+    assert!(!structs.is_empty(), "Should find Triple<char, int, char>");
+    let triple = &structs[0];
+
+    // This template has 50% padding due to alignment
+    let padding_pct = triple["metrics"]["padding_percentage"].as_f64().unwrap();
+    assert!(padding_pct > 40.0, "Triple<char, int, char> should have significant padding");
+}

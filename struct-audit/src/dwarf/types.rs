@@ -177,6 +177,15 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
     ) -> Result<Option<UnitOffset>> {
         match entry.attr_value(gimli::DW_AT_type) {
             Ok(Some(AttributeValue::UnitRef(offset))) => Ok(Some(offset)),
+            Ok(Some(AttributeValue::DebugInfoRef(debug_info_offset))) => {
+                // Convert section offset to unit offset
+                let unit_offset = UnitOffset(
+                    debug_info_offset
+                        .0
+                        .saturating_sub(self.unit.header.offset().as_debug_info_offset().unwrap().0),
+                );
+                Ok(Some(unit_offset))
+            }
             _ => Ok(None),
         }
     }
