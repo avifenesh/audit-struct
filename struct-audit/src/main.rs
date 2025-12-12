@@ -251,7 +251,6 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
     let config: Config = serde_yaml::from_str(&config_str)
         .with_context(|| format!("Failed to parse config: {}", config_path.display()))?;
 
-    // Validate all budgets
     for (name, budget) in &config.budgets {
         budget.validate(name)?;
     }
@@ -272,11 +271,9 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
         analyze_layout(layout, cache_line_size);
     }
 
-    // Track which budgets were matched
     let layout_names: std::collections::HashSet<&str> =
         layouts.iter().map(|l| l.name.as_str()).collect();
 
-    // Warn about budgets for non-existent structs
     for budget_name in config.budgets.keys() {
         if !layout_names.contains(budget_name.as_str()) {
             eprintln!(
@@ -313,7 +310,6 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
                 ));
             }
             if let Some(max_pct) = budget.max_padding_percent {
-                // Use epsilon for float comparison to avoid precision issues
                 const EPSILON: f64 = 1e-6;
                 if layout.metrics.padding_percentage > max_pct + EPSILON {
                     violations.push(format!(

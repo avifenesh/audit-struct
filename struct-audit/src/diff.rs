@@ -51,7 +51,6 @@ impl DiffResult {
     }
 
     pub fn has_regressions(&self) -> bool {
-        // Regressions: size increased or padding increased
         self.changed.iter().any(|c| c.size_delta > 0 || c.padding_delta > 0)
     }
 }
@@ -65,7 +64,6 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
     let mut changed = Vec::new();
     let mut unchanged_count = 0;
 
-    // Find removed structs
     for (name, old_struct) in &old_map {
         if !new_map.contains_key(name) {
             removed.push(StructSummary {
@@ -76,7 +74,6 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
         }
     }
 
-    // Find added and changed structs
     for (name, new_struct) in &new_map {
         match old_map.get(name) {
             None => {
@@ -96,7 +93,6 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
         }
     }
 
-    // Sort for consistent output
     added.sort_by(|a, b| a.name.cmp(&b.name));
     removed.sort_by(|a, b| a.name.cmp(&b.name));
     changed.sort_by(|a, b| a.name.cmp(&b.name));
@@ -105,7 +101,6 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
 }
 
 fn diff_struct(old: &StructLayout, new: &StructLayout) -> Option<StructChange> {
-    // Use saturating conversion to avoid overflow on extremely large u64 values
     let size_delta = i64::try_from(new.size)
         .unwrap_or(i64::MAX)
         .saturating_sub(i64::try_from(old.size).unwrap_or(i64::MAX));
@@ -118,7 +113,6 @@ fn diff_struct(old: &StructLayout, new: &StructLayout) -> Option<StructChange> {
     let old_members: HashMap<&str, _> = old.members.iter().map(|m| (m.name.as_str(), m)).collect();
     let new_members: HashMap<&str, _> = new.members.iter().map(|m| (m.name.as_str(), m)).collect();
 
-    // Check for removed members
     for (name, old_member) in &old_members {
         if !new_members.contains_key(name) {
             member_changes.push(MemberChange {
@@ -129,7 +123,6 @@ fn diff_struct(old: &StructLayout, new: &StructLayout) -> Option<StructChange> {
         }
     }
 
-    // Check for added and changed members
     for (name, new_member) in &new_members {
         match old_members.get(name) {
             None => {

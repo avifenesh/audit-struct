@@ -89,7 +89,6 @@ impl TableFormatter {
         let mut last_cache_line: Option<u64> = None;
 
         for entry in &entries {
-            // Only compute cache line for entries with known offset
             let offset = match entry {
                 TableEntry::Member { offset: Some(o), .. } => Some(*o),
                 TableEntry::Member { offset: None, .. } => None,
@@ -113,7 +112,6 @@ impl TableFormatter {
                 }
                 last_cache_line = Some(current_cache_line);
             }
-            // Skip cache line tracking for unknown-offset entries
 
             match entry {
                 TableEntry::Member { offset, size, type_name, name, bit_offset, bit_size } => {

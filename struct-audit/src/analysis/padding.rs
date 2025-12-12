@@ -36,9 +36,7 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
     let mut padding_holes = Vec::new();
     let mut useful_size: u64 = 0;
 
-    // If we don't have at least one reliable byte-span, we can't infer padding at all.
-    // This avoids bogus "100% padding" reports for layouts where offsets are unavailable
-    // (e.g., some bitfield encodings).
+    // Can't infer padding without at least one reliable span.
     if spans.is_empty() {
         let cache_line_size_u64 = cache_line_size as u64;
         let cache_lines_spanned =
