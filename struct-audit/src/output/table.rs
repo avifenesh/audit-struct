@@ -89,26 +89,31 @@ impl TableFormatter {
         let mut last_cache_line: Option<u64> = None;
 
         for entry in &entries {
+            // Only compute cache line for entries with known offset
             let offset = match entry {
-                TableEntry::Member { offset, .. } => offset.unwrap_or(0),
-                TableEntry::Padding { offset, .. } => *offset,
+                TableEntry::Member { offset: Some(o), .. } => Some(*o),
+                TableEntry::Member { offset: None, .. } => None,
+                TableEntry::Padding { offset, .. } => Some(*offset),
             };
 
-            let current_cache_line = offset / self.cache_line_size as u64;
-            if last_cache_line.map(|l| l != current_cache_line).unwrap_or(false) {
-                let marker_offset = current_cache_line * self.cache_line_size as u64;
-                table.add_row(vec![
-                    Cell::new(format!(
-                        "--- cache line {} ({}) ---",
-                        current_cache_line, marker_offset
-                    ))
-                    .set_alignment(CellAlignment::Center),
-                    Cell::new(""),
-                    Cell::new(""),
-                    Cell::new(""),
-                ]);
+            if let Some(off) = offset {
+                let current_cache_line = off / self.cache_line_size as u64;
+                if last_cache_line.is_some_and(|l| l != current_cache_line) {
+                    let marker_offset = current_cache_line * self.cache_line_size as u64;
+                    table.add_row(vec![
+                        Cell::new(format!(
+                            "--- cache line {} ({}) ---",
+                            current_cache_line, marker_offset
+                        ))
+                        .set_alignment(CellAlignment::Center),
+                        Cell::new(""),
+                        Cell::new(""),
+                        Cell::new(""),
+                    ]);
+                }
+                last_cache_line = Some(current_cache_line);
             }
-            last_cache_line = Some(current_cache_line);
+            // Skip cache line tracking for unknown-offset entries
 
             match entry {
                 TableEntry::Member { offset, size, type_name, name, bit_offset, bit_size } => {
