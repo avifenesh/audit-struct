@@ -8,21 +8,16 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
     let mut partial = false;
 
     for member in &layout.members {
-        let member_offset = match member.offset {
-            Some(o) => o,
-            None => {
-                partial = true;
-                continue;
-            }
+        let Some(member_offset) = member.offset else {
+            partial = true;
+            last_member_name = Some(member.name.clone());
+            continue;
         };
 
-        let member_size = match member.size {
-            Some(s) => s,
-            None => {
-                partial = true;
-                last_member_name = Some(member.name.clone());
-                continue;
-            }
+        let Some(member_size) = member.size else {
+            partial = true;
+            last_member_name = Some(member.name.clone());
+            continue;
         };
 
         if member_offset > current_offset {

@@ -23,7 +23,7 @@ pub struct MemberLayout {
     pub bit_size: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct LayoutMetrics {
     pub total_size: u64,
     pub useful_size: u64,
@@ -58,21 +58,6 @@ impl StructLayout {
             members: Vec::new(),
             metrics: LayoutMetrics::default(),
             source_location: None,
-        }
-    }
-}
-
-impl Default for LayoutMetrics {
-    fn default() -> Self {
-        Self {
-            total_size: 0,
-            useful_size: 0,
-            padding_bytes: 0,
-            padding_percentage: 0.0,
-            cache_lines_spanned: 0,
-            cache_line_density: 0.0,
-            padding_holes: Vec::new(),
-            partial: false,
         }
     }
 }

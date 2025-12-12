@@ -79,6 +79,12 @@ impl BinaryData {
             }
         }
 
+        // SAFETY: We need raw pointer here because:
+        // 1. load_section closure returns slices pointing into decompressed_sections
+        // 2. These slices are stored in Dwarf by Dwarf::load
+        // 3. We then move decompressed_sections into LoadedDwarf
+        // 4. Vec heap data doesn't move when HashMap is moved, so slices remain valid
+        // 5. LoadedDwarf keeps decompressed_sections alive for dwarf's lifetime
         let decompressed_ptr = &decompressed_sections as *const HashMap<&'static str, Vec<u8>>;
 
         let load_section = |id: SectionId| -> std::result::Result<DwarfSlice<'_>, gimli::Error> {
@@ -86,7 +92,6 @@ impl BinaryData {
             let zdebug_name = section_name.replace(".debug_", ".zdebug_");
 
             let try_load = |name: &str| -> Option<&[u8]> {
-                // SAFETY: decompressed_sections lives in LoadedDwarf which outlives the dwarf reference
                 let decompressed = unsafe { &*decompressed_ptr };
                 if let Some(vec) = decompressed.get(name) {
                     return Some(vec.as_slice());
