@@ -9,11 +9,12 @@ use super::expr::{evaluate_member_offset, try_simple_offset};
 pub struct DwarfContext<'a> {
     dwarf: &'a Dwarf<DwarfSlice<'a>>,
     address_size: u8,
+    endian: gimli::RunTimeEndian,
 }
 
 impl<'a> DwarfContext<'a> {
     pub fn new(loaded: &'a LoadedDwarf<'a>) -> Self {
-        Self { dwarf: &loaded.dwarf, address_size: loaded.address_size }
+        Self { dwarf: &loaded.dwarf, address_size: loaded.address_size, endian: loaded.endian }
     }
 
     pub fn find_structs(&self, filter: Option<&str>) -> Result<Vec<StructLayout>> {
@@ -174,8 +175,6 @@ impl<'a> DwarfContext<'a> {
     ) -> Result<Option<MemberLayout>> {
         let name = self.get_die_name(unit, entry)?.unwrap_or_else(|| "<anonymous>".to_string());
 
-        let offset = self.get_member_offset(unit, entry)?;
-
         let (type_name, size) = match entry.attr_value(gimli::DW_AT_type) {
             Ok(Some(AttributeValue::UnitRef(type_offset))) => {
                 type_resolver.resolve_type(type_offset)?
@@ -193,24 +192,64 @@ impl<'a> DwarfContext<'a> {
             _ => ("unknown".to_string(), None),
         };
 
+        let offset = self.get_member_offset(unit, entry)?;
+
         let mut member = MemberLayout::new(name, type_name, offset, size);
 
-        // Parse bitfield attributes (DWARF 4 style)
-        if let Ok(Some(AttributeValue::Udata(bit_offset))) =
-            entry.attr_value(gimli::DW_AT_bit_offset)
-        {
-            member.bit_offset = Some(bit_offset);
-        }
+        let read_u64_attr = |attr: gimli::DwAt| -> Option<u64> {
+            match entry.attr_value(attr).ok().flatten()? {
+                AttributeValue::Udata(v) => Some(v),
+                AttributeValue::Data1(v) => Some(v as u64),
+                AttributeValue::Data2(v) => Some(v as u64),
+                AttributeValue::Data4(v) => Some(v as u64),
+                AttributeValue::Data8(v) => Some(v),
+                AttributeValue::Sdata(v) if v >= 0 => Some(v as u64),
+                _ => None,
+            }
+        };
 
-        // DWARF 5 style: DW_AT_data_bit_offset (offset from start of containing entity)
-        if let Ok(Some(AttributeValue::Udata(data_bit_offset))) =
-            entry.attr_value(gimli::DW_AT_data_bit_offset)
-        {
-            member.bit_offset = Some(data_bit_offset);
-        }
+        let bit_size = read_u64_attr(gimli::DW_AT_bit_size);
+        let dwarf5_data_bit_offset = read_u64_attr(gimli::DW_AT_data_bit_offset);
+        let dwarf4_bit_offset = read_u64_attr(gimli::DW_AT_bit_offset);
 
-        if let Ok(Some(AttributeValue::Udata(bit_size))) = entry.attr_value(gimli::DW_AT_bit_size) {
-            member.bit_size = Some(bit_size);
+        member.bit_size = bit_size;
+
+        if let Some(bit_size) = bit_size
+            && let Some(storage_bytes) = member.size
+            && storage_bytes > 0
+        {
+            let storage_bits = storage_bytes.saturating_mul(8);
+
+            // Determine the containing storage unit byte offset for this bitfield.
+            // Prefer DW_AT_data_member_location when present. If absent, infer the
+            // storage unit start by aligning the absolute DW_AT_data_bit_offset down
+            // to the storage unit size.
+            let container_offset = member.offset.or_else(|| {
+                let data_bit_offset = dwarf5_data_bit_offset?;
+                let start_byte = data_bit_offset / 8;
+                Some((start_byte / storage_bytes) * storage_bytes)
+            });
+
+            if member.offset.is_none() {
+                member.offset = container_offset;
+            }
+
+            // Compute bit offset within the containing storage unit.
+            if let Some(container_offset) = container_offset {
+                if let Some(data_bit_offset) = dwarf5_data_bit_offset {
+                    member.bit_offset = Some(data_bit_offset.saturating_sub(container_offset * 8));
+                } else if let Some(raw_bit_offset) = dwarf4_bit_offset {
+                    if raw_bit_offset + bit_size <= storage_bits {
+                        let bit_offset = match self.endian {
+                            gimli::RunTimeEndian::Little => {
+                                storage_bits - raw_bit_offset - bit_size
+                            }
+                            gimli::RunTimeEndian::Big => raw_bit_offset,
+                        };
+                        member.bit_offset = Some(bit_offset);
+                    }
+                }
+            }
         }
 
         Ok(Some(member))

@@ -1,49 +1,99 @@
 use crate::types::{LayoutMetrics, PaddingHole, StructLayout};
 
 pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
-    let mut padding_holes = Vec::new();
-    let mut useful_size: u64 = 0;
-    let mut current_offset: u64 = 0;
-    let mut last_member_name: Option<String> = None;
+    #[derive(Clone)]
+    struct Span {
+        start: u64,
+        end: u64,
+        member_name: String,
+    }
+
+    let mut spans = Vec::new();
     let mut partial = false;
 
     for member in &layout.members {
         let Some(member_offset) = member.offset else {
             partial = true;
-            last_member_name = Some(member.name.clone());
             continue;
         };
-
         let Some(member_size) = member.size else {
             partial = true;
-            last_member_name = Some(member.name.clone());
             continue;
         };
-
-        if member_offset > current_offset {
-            let gap_size = member_offset - current_offset;
-            padding_holes.push(PaddingHole {
-                offset: current_offset,
-                size: gap_size,
-                after_member: last_member_name.clone(),
-            });
+        if member_size == 0 {
+            continue;
         }
 
-        useful_size += member_size;
-        current_offset = current_offset.max(member_offset + member_size);
-        last_member_name = Some(member.name.clone());
+        spans.push(Span {
+            start: member_offset,
+            end: member_offset.saturating_add(member_size),
+            member_name: member.name.clone(),
+        });
     }
 
-    // Only report tail padding if we have reliable offset information.
-    // When partial=true and current_offset=0, all members had unknown offsets
-    // (e.g., bitfields), so we can't reliably compute padding.
-    let has_known_members = current_offset > 0 || !partial;
-    if has_known_members && current_offset < layout.size {
-        let tail_padding = layout.size - current_offset;
+    spans.sort_by_key(|s| (s.start, s.end));
+
+    let mut padding_holes = Vec::new();
+    let mut useful_size: u64 = 0;
+
+    // If we don't have at least one reliable byte-span, we can't infer padding at all.
+    // This avoids bogus "100% padding" reports for layouts where offsets are unavailable
+    // (e.g., some bitfield encodings).
+    if spans.is_empty() {
+        let cache_line_size_u64 = cache_line_size as u64;
+        let cache_lines_spanned =
+            if layout.size > 0 { layout.size.div_ceil(cache_line_size_u64) as u32 } else { 0 };
+
+        layout.metrics = LayoutMetrics {
+            total_size: layout.size,
+            useful_size: 0,
+            padding_bytes: 0,
+            padding_percentage: 0.0,
+            cache_lines_spanned,
+            cache_line_density: 0.0,
+            padding_holes,
+            partial,
+        };
+        return;
+    }
+
+    // Merge overlapping spans (bitfields share storage, unions overlap, etc.). We use the merged
+    // covered bytes for "useful_size" to avoid double-counting overlapping members.
+    let mut current_start = spans[0].start;
+    let mut current_end = spans[0].end;
+    let mut current_end_member: Option<String> = Some(spans[0].member_name.clone());
+
+    for span in spans.into_iter().skip(1) {
+        if span.start > current_end {
+            useful_size = useful_size.saturating_add(current_end.saturating_sub(current_start));
+
+            if !partial {
+                padding_holes.push(PaddingHole {
+                    offset: current_end,
+                    size: span.start - current_end,
+                    after_member: current_end_member.clone(),
+                });
+            }
+
+            current_start = span.start;
+            current_end = span.end;
+            current_end_member = Some(span.member_name);
+            continue;
+        }
+
+        if span.end >= current_end {
+            current_end = span.end;
+            current_end_member = Some(span.member_name);
+        }
+    }
+
+    useful_size = useful_size.saturating_add(current_end.saturating_sub(current_start));
+
+    if !partial && current_end < layout.size {
         padding_holes.push(PaddingHole {
-            offset: current_offset,
-            size: tail_padding,
-            after_member: last_member_name,
+            offset: current_end,
+            size: layout.size - current_end,
+            after_member: current_end_member,
         });
     }
 

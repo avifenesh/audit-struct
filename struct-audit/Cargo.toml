@@ -13,10 +13,10 @@ keywords = ["memory", "layout", "padding", "dwarf", "optimization"]
 categories = ["command-line-utilities", "development-tools::debugging", "development-tools::profiling"]
 authors = ["Avi Fenesh"]
 exclude = [
-    "tests/fixtures/bin/",
-    "tests/fixtures/rust_test/target/",
-    "tests/fixtures/multifile/*.o",
-    "tests/fixtures/multifile/*.dSYM/",
+    "tests/",
+    "scripts/",
+    "Dockerfile.test",
+    "action.yml",
     ".github/",
 ]
 

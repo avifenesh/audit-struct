@@ -55,6 +55,13 @@ struct WithPointer {
     // 4 bytes tail padding on 64-bit
 };
 
+// Bitfields (often use DW_AT_data_bit_offset / DW_AT_bit_offset)
+struct BitfieldFlags {
+    unsigned int a:1;
+    unsigned int b:3;
+    unsigned int c:28;
+};
+
 int main() {
     struct NoPadding np;
     struct InternalPadding ip;
@@ -62,6 +69,7 @@ int main() {
     struct Outer outer;
     struct WithArray wa;
     struct WithPointer wp;
+    struct BitfieldFlags bf;
 
     (void)np;
     (void)ip;
@@ -69,6 +77,7 @@ int main() {
     (void)outer;
     (void)wa;
     (void)wp;
+    (void)bf;
 
     return 0;
 }

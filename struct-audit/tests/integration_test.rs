@@ -509,6 +509,44 @@ fn test_array_member_size() {
 }
 
 // ============================================================================
+// Bitfield tests
+// ============================================================================
+
+#[test]
+fn test_bitfield_layout_does_not_show_full_padding() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let binary = BinaryData::load(&path).expect("Failed to load binary");
+    let loaded = binary.load_dwarf().expect("Failed to load DWARF");
+    let dwarf = DwarfContext::new(&loaded);
+
+    let mut layouts = dwarf.find_structs(Some("BitfieldFlags")).expect("Failed to parse structs");
+    assert_eq!(layouts.len(), 1);
+
+    let layout = &mut layouts[0];
+    analyze_layout(layout, 64);
+
+    assert_eq!(layout.name, "BitfieldFlags");
+    assert_eq!(layout.size, 4);
+    assert!(!layout.metrics.partial, "BitfieldFlags should have a fully-resolved layout");
+    assert_eq!(layout.metrics.padding_bytes, 0);
+
+    // Ensure we resolved a usable byte offset for the bitfield storage unit.
+    for member in &layout.members {
+        assert!(member.offset.is_some(), "Bitfield member offset should be resolved: {:?}", member);
+        assert!(member.size.is_some(), "Bitfield member size should be resolved: {:?}", member);
+        assert!(
+            member.bit_size.is_some(),
+            "Bitfield member bit_size should be present: {:?}",
+            member
+        );
+    }
+}
+
+// ============================================================================
 // Diff command tests
 // ============================================================================
 

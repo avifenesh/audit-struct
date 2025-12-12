@@ -16,6 +16,7 @@ pub type DwarfSlice<'a> = EndianSlice<'a, RunTimeEndian>;
 pub struct LoadedDwarf<'a> {
     pub dwarf: Dwarf<DwarfSlice<'a>>,
     pub address_size: u8,
+    pub endian: RunTimeEndian,
     #[allow(dead_code)]
     decompressed_sections: HashMap<&'static str, Vec<u8>>,
 }
@@ -120,6 +121,7 @@ impl BinaryData {
         Ok(LoadedDwarf {
             dwarf,
             address_size: if object.is_64() { 8 } else { 4 },
+            endian,
             decompressed_sections,
         })
     }
