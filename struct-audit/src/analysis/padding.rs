@@ -34,7 +34,11 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
         last_member_name = Some(member.name.clone());
     }
 
-    if current_offset < layout.size {
+    // Only report tail padding if we have reliable offset information.
+    // When partial=true and current_offset=0, all members had unknown offsets
+    // (e.g., bitfields), so we can't reliably compute padding.
+    let has_known_members = current_offset > 0 || !partial;
+    if has_known_members && current_offset < layout.size {
         let tail_padding = layout.size - current_offset;
         padding_holes.push(PaddingHole {
             offset: current_offset,
