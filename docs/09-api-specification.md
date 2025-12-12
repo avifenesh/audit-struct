@@ -72,7 +72,7 @@ The CLI generates JSON reports conforming to this schema:
   "definitions": {
     "StructLayout": {
       "type": "object",
-      "required": ["name", "size", "alignment", "members", "metrics"],
+      "required": ["name", "size", "members", "metrics"],
       "properties": {
         "name": {
           "type": "string",
@@ -85,17 +85,16 @@ The CLI generates JSON reports conforming to this schema:
           "description": "Total size in bytes"
         },
         "alignment": {
-          "type": "integer",
+          "type": ["integer", "null"],
           "minimum": 1,
-          "description": "Alignment requirement in bytes"
+          "description": "Alignment requirement in bytes (null if unknown)"
         },
-        "source_file": {
-          "type": "string",
-          "description": "Source file path"
-        },
-        "source_line": {
-          "type": "integer",
-          "description": "Source line number"
+        "source_location": {
+          "type": "object",
+          "properties": {
+            "file": { "type": "string", "description": "Source file path" },
+            "line": { "type": "integer", "description": "Source line number" }
+          }
         },
         "members": {
           "type": "array",
@@ -108,7 +107,7 @@ The CLI generates JSON reports conforming to this schema:
     },
     "MemberLayout": {
       "type": "object",
-      "required": ["name", "type_name", "offset", "size"],
+      "required": ["name", "type_name"],
       "properties": {
         "name": {
           "type": "string",
@@ -120,23 +119,18 @@ The CLI generates JSON reports conforming to this schema:
           "example": "uint64_t"
         },
         "offset": {
-          "type": "integer",
+          "type": ["integer", "null"],
           "minimum": 0,
-          "description": "Byte offset from struct start"
+          "description": "Byte offset from struct start (null if unknown)"
         },
         "size": {
-          "type": "integer",
+          "type": ["integer", "null"],
           "minimum": 0,
-          "description": "Size in bytes"
-        },
-        "alignment": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Alignment requirement"
+          "description": "Size in bytes (null if unknown)"
         },
         "bit_offset": {
           "type": "integer",
-          "description": "Bit offset for bitfields"
+          "description": "Bit offset within storage unit for bitfields"
         },
         "bit_size": {
           "type": "integer",
@@ -146,33 +140,47 @@ The CLI generates JSON reports conforming to this schema:
     },
     "LayoutMetrics": {
       "type": "object",
-      "required": ["padding_bytes", "padding_percent", "cache_lines", "density"],
+      "required": ["total_size", "useful_size", "padding_bytes", "padding_percentage", "cache_lines_spanned", "cache_line_density", "padding_holes"],
       "properties": {
+        "total_size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total struct size in bytes"
+        },
+        "useful_size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Bytes occupied by actual data (excluding padding)"
+        },
         "padding_bytes": {
           "type": "integer",
           "minimum": 0,
           "description": "Total padding bytes"
         },
-        "padding_percent": {
+        "padding_percentage": {
           "type": "number",
           "minimum": 0,
           "maximum": 100,
-          "description": "Padding as percentage"
+          "description": "Padding as percentage of total size"
         },
-        "cache_lines": {
+        "cache_lines_spanned": {
           "type": "integer",
-          "minimum": 1,
-          "description": "Cache lines spanned"
+          "minimum": 0,
+          "description": "Number of cache lines spanned"
         },
-        "density": {
+        "cache_line_density": {
           "type": "number",
           "minimum": 0,
-          "maximum": 1,
-          "description": "Data density (0-1)"
+          "maximum": 100,
+          "description": "Useful bytes as percentage of total cache line bytes (0-100)"
         },
-        "holes": {
+        "padding_holes": {
           "type": "array",
           "items": { "$ref": "#/definitions/PaddingHole" }
+        },
+        "partial": {
+          "type": "boolean",
+          "description": "True if some member offsets were unknown, making padding analysis incomplete"
         }
       }
     },
@@ -188,9 +196,9 @@ The CLI generates JSON reports conforming to this schema:
           "type": "integer",
           "description": "Size of hole in bytes"
         },
-        "after_field": {
-          "type": "string",
-          "description": "Field before the hole"
+        "after_member": {
+          "type": ["string", "null"],
+          "description": "Name of the member before this padding hole"
         }
       }
     },
@@ -226,41 +234,47 @@ The CLI generates JSON reports conforming to this schema:
       "name": "my_app::Order",
       "size": 72,
       "alignment": 8,
-      "source_file": "src/orders.rs",
-      "source_line": 15,
+      "source_location": {
+        "file": "src/orders.rs",
+        "line": 15
+      },
       "members": [
         {
           "name": "id",
           "type_name": "u64",
           "offset": 0,
-          "size": 8,
-          "alignment": 8
+          "size": 8
         },
         {
           "name": "is_active",
           "type_name": "bool",
           "offset": 8,
-          "size": 1,
-          "alignment": 1
+          "size": 1
         },
         {
           "name": "price",
           "type_name": "f64",
           "offset": 16,
-          "size": 8,
-          "alignment": 8
+          "size": 8
         }
       ],
       "metrics": {
-        "padding_bytes": 14,
-        "padding_percent": 19.4,
-        "cache_lines": 2,
-        "density": 0.81,
-        "holes": [
+        "total_size": 72,
+        "useful_size": 17,
+        "padding_bytes": 55,
+        "padding_percentage": 76.4,
+        "cache_lines_spanned": 2,
+        "cache_line_density": 13.3,
+        "padding_holes": [
           {
             "offset": 9,
             "size": 7,
-            "after_field": "is_active"
+            "after_member": "is_active"
+          },
+          {
+            "offset": 24,
+            "size": 48,
+            "after_member": "price"
           }
         ]
       }
