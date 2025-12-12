@@ -32,6 +32,8 @@ pub struct LayoutMetrics {
     pub cache_lines_spanned: u32,
     pub cache_line_density: f64,
     pub padding_holes: Vec<PaddingHole>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub partial: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -70,6 +72,7 @@ impl Default for LayoutMetrics {
             cache_lines_spanned: 0,
             cache_line_density: 0.0,
             padding_holes: Vec::new(),
+            partial: false,
         }
     }
 }

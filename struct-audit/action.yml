@@ -67,58 +67,71 @@ runs:
     - name: Run struct-audit
       id: run
       shell: bash
+      env:
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_BINARY: ${{ inputs.binary }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_FILTER: ${{ inputs.filter }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_SORT_BY: ${{ inputs.sort-by }}
+        INPUT_TOP: ${{ inputs.top }}
+        INPUT_MIN_PADDING: ${{ inputs.min-padding }}
+        INPUT_FAIL_ON_REGRESSION: ${{ inputs.fail-on-regression }}
       run: |
         set +e
 
-        ARGS=""
+        args=()
 
-        case "${{ inputs.command }}" in
+        case "$INPUT_COMMAND" in
           inspect)
-            ARGS="inspect ${{ inputs.binary }}"
-            if [ -n "${{ inputs.filter }}" ]; then
-              ARGS="$ARGS --filter '${{ inputs.filter }}'"
+            args+=(inspect "$INPUT_BINARY")
+            if [ -n "$INPUT_FILTER" ]; then
+              args+=(--filter "$INPUT_FILTER")
             fi
-            ARGS="$ARGS --output ${{ inputs.output }}"
-            ARGS="$ARGS --sort-by ${{ inputs.sort-by }}"
-            if [ -n "${{ inputs.top }}" ]; then
-              ARGS="$ARGS --top ${{ inputs.top }}"
+            args+=(--output "$INPUT_OUTPUT")
+            args+=(--sort-by "$INPUT_SORT_BY")
+            if [ -n "$INPUT_TOP" ]; then
+              args+=(--top "$INPUT_TOP")
             fi
-            if [ -n "${{ inputs.min-padding }}" ]; then
-              ARGS="$ARGS --min-padding ${{ inputs.min-padding }}"
+            if [ -n "$INPUT_MIN_PADDING" ]; then
+              args+=(--min-padding "$INPUT_MIN_PADDING")
             fi
             ;;
           diff)
-            if [ -z "${{ inputs.baseline }}" ]; then
+            if [ -z "$INPUT_BASELINE" ]; then
               echo "Error: baseline input is required for diff command"
               exit 1
             fi
-            ARGS="diff ${{ inputs.baseline }} ${{ inputs.binary }}"
-            if [ -n "${{ inputs.filter }}" ]; then
-              ARGS="$ARGS --filter '${{ inputs.filter }}'"
+            args+=(diff "$INPUT_BASELINE" "$INPUT_BINARY")
+            if [ -n "$INPUT_FILTER" ]; then
+              args+=(--filter "$INPUT_FILTER")
             fi
-            ARGS="$ARGS --output ${{ inputs.output }}"
-            if [ "${{ inputs.fail-on-regression }}" = "true" ]; then
-              ARGS="$ARGS --fail-on-regression"
+            args+=(--output "$INPUT_OUTPUT")
+            if [ "$INPUT_FAIL_ON_REGRESSION" = "true" ]; then
+              args+=(--fail-on-regression)
             fi
             ;;
           check)
-            ARGS="check ${{ inputs.binary }} --config ${{ inputs.config }}"
+            args+=(check "$INPUT_BINARY" --config "$INPUT_CONFIG")
             ;;
           *)
-            echo "Error: unknown command '${{ inputs.command }}'"
+            echo "Error: unknown command '$INPUT_COMMAND'"
             exit 1
             ;;
         esac
 
-        echo "Running: struct-audit $ARGS"
-        OUTPUT=$(eval "struct-audit $ARGS" 2>&1)
+        echo "Running: struct-audit ${args[*]}"
+        OUTPUT=$(struct-audit "${args[@]}" 2>&1)
         EXIT_CODE=$?
 
         echo "$OUTPUT"
 
         # Set output for use in subsequent steps
-        echo "report<<EOF" >> $GITHUB_OUTPUT
-        echo "$OUTPUT" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        {
+          echo "report<<EOF"
+          echo "$OUTPUT"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
 
         exit $EXIT_CODE

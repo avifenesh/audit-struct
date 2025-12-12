@@ -5,16 +5,21 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
     let mut useful_size: u64 = 0;
     let mut current_offset: u64 = 0;
     let mut last_member_name: Option<String> = None;
+    let mut partial = false;
 
     for member in &layout.members {
         let member_offset = match member.offset {
             Some(o) => o,
-            None => continue,
+            None => {
+                partial = true;
+                continue;
+            }
         };
 
         let member_size = match member.size {
             Some(s) => s,
             None => {
+                partial = true;
                 last_member_name = Some(member.name.clone());
                 continue;
             }
@@ -30,7 +35,7 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
         }
 
         useful_size += member_size;
-        current_offset = member_offset + member_size;
+        current_offset = current_offset.max(member_offset + member_size);
         last_member_name = Some(member.name.clone());
     }
 
@@ -66,5 +71,6 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
         cache_lines_spanned,
         cache_line_density,
         padding_holes,
+        partial,
     };
 }
