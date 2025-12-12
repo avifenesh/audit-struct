@@ -119,17 +119,51 @@ impl<'a> DwarfContext<'a> {
             .map_err(|e| Error::Dwarf(format!("Failed to iterate children: {}", e)))?
         {
             let entry = child.entry();
-            if entry.tag() != gimli::DW_TAG_member {
-                continue;
-            }
-
-            if let Some(member) = self.process_member(unit, entry, type_resolver)? {
-                members.push(member);
+            match entry.tag() {
+                gimli::DW_TAG_member => {
+                    if let Some(member) = self.process_member(unit, entry, type_resolver)? {
+                        members.push(member);
+                    }
+                }
+                gimli::DW_TAG_inheritance => {
+                    if let Some(member) = self.process_inheritance(unit, entry, type_resolver)? {
+                        members.push(member);
+                    }
+                }
+                _ => {}
             }
         }
 
         members.sort_by_key(|m| m.offset.unwrap_or(u64::MAX));
         Ok(members)
+    }
+
+    fn process_inheritance(
+        &self,
+        unit: &Unit<DwarfSlice<'a>>,
+        entry: &DebuggingInformationEntry<DwarfSlice<'a>>,
+        type_resolver: &mut TypeResolver<'a, '_>,
+    ) -> Result<Option<MemberLayout>> {
+        let offset = self.get_member_offset(unit, entry)?;
+
+        let (type_name, size) = match entry.attr_value(gimli::DW_AT_type) {
+            Ok(Some(AttributeValue::UnitRef(type_offset))) => {
+                type_resolver.resolve_type(type_offset)?
+            }
+            Ok(Some(AttributeValue::DebugInfoRef(debug_info_offset))) => {
+                if let Some(unit_debug_offset) = unit.header.offset().as_debug_info_offset() {
+                    let unit_offset =
+                        gimli::UnitOffset(debug_info_offset.0.saturating_sub(unit_debug_offset.0));
+                    type_resolver.resolve_type(unit_offset)?
+                } else {
+                    ("unknown".to_string(), None)
+                }
+            }
+            _ => ("unknown".to_string(), None),
+        };
+
+        let name = format!("<base: {}>", type_name);
+        Ok(Some(MemberLayout::new(name, type_name, offset, size)))
     }
 
     fn process_member(
