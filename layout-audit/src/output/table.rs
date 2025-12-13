@@ -164,6 +164,36 @@ impl TableFormatter {
             layout.metrics.cache_line_density
         ));
 
+        if let Some(ref fs) = layout.metrics.false_sharing {
+            if !fs.warnings.is_empty() {
+                let header = "\nPotential False Sharing:";
+                if self.no_color {
+                    output.push_str(header);
+                } else {
+                    output.push_str(&header.red().bold().to_string());
+                }
+                output.push('\n');
+
+                for w in &fs.warnings {
+                    let msg = format!(
+                        "  - '{}' and '{}' share cache line {} (offset {}, {} bytes apart)",
+                        w.member_a, w.member_b, w.cache_line, w.cache_line_offset, w.distance
+                    );
+                    if self.no_color {
+                        output.push_str(&msg);
+                    } else {
+                        output.push_str(&msg.yellow().to_string());
+                    }
+                    output.push('\n');
+                }
+            }
+
+            if !fs.atomic_members.is_empty() {
+                let names: Vec<&str> = fs.atomic_members.iter().map(|m| m.name.as_str()).collect();
+                output.push_str(&format!("\nAtomic members: {}\n", names.join(", ")));
+            }
+        }
+
         output
     }
 }

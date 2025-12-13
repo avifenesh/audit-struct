@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 use layout_audit::{
     BinaryData, Cli, Commands, DwarfContext, JsonFormatter, OutputFormat, SortField,
-    TableFormatter, analyze_layout, diff_layouts,
+    TableFormatter, analyze_false_sharing, analyze_layout, diff_layouts,
 };
 use std::path::Path;
 
@@ -20,6 +20,7 @@ fn main() -> Result<()> {
             no_color,
             cache_line,
             pretty,
+            warn_false_sharing,
         } => {
             run_inspect(
                 &binary,
@@ -31,6 +32,7 @@ fn main() -> Result<()> {
                 no_color,
                 cache_line,
                 pretty,
+                warn_false_sharing,
             )?;
         }
         Commands::Diff { old, new, filter, output, cache_line, fail_on_regression } => {
@@ -58,6 +60,7 @@ fn run_inspect(
     no_color: bool,
     cache_line_size: u32,
     pretty: bool,
+    warn_false_sharing: bool,
 ) -> Result<()> {
     let binary = BinaryData::load(binary_path)
         .with_context(|| format!("Failed to load binary: {}", binary_path.display()))?;
@@ -79,6 +82,10 @@ fn run_inspect(
 
     for layout in &mut layouts {
         analyze_layout(layout, cache_line_size);
+        if warn_false_sharing {
+            let fs_analysis = analyze_false_sharing(layout, cache_line_size);
+            layout.metrics.false_sharing = Some(fs_analysis);
+        }
     }
 
     if let Some(min) = min_padding {
@@ -321,6 +328,16 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
                     ));
                 }
             }
+            if let Some(max_fs) = budget.max_false_sharing_warnings {
+                let fs = analyze_false_sharing(layout, cache_line_size);
+                let warning_count = fs.warnings.len() as u32;
+                if warning_count > max_fs {
+                    violations.push(format!(
+                        "{}: {} potential false sharing issue(s) exceeds limit of {}",
+                        layout.name, warning_count, max_fs
+                    ));
+                }
+            }
         }
     }
 
@@ -348,6 +365,7 @@ struct Budget {
     max_size: Option<u64>,
     max_padding: Option<u64>,
     max_padding_percent: Option<f64>,
+    max_false_sharing_warnings: Option<u32>,
 }
 
 impl Budget {

@@ -7,11 +7,14 @@ pub mod loader;
 pub mod output;
 pub mod types;
 
-pub use analysis::analyze_layout;
+pub use analysis::{analyze_false_sharing, analyze_layout};
 pub use cli::{Cli, Commands, OutputFormat, SortField};
 pub use diff::{DiffResult, diff_layouts};
 pub use dwarf::DwarfContext;
 pub use error::{Error, Result};
 pub use loader::{BinaryData, LoadedDwarf};
 pub use output::{JsonFormatter, TableFormatter};
-pub use types::{LayoutMetrics, MemberLayout, PaddingHole, SourceLocation, StructLayout};
+pub use types::{
+    AtomicMember, FalseSharingAnalysis, FalseSharingWarning, LayoutMetrics, MemberLayout,
+    PaddingHole, SourceLocation, StructLayout,
+};

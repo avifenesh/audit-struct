@@ -57,6 +57,10 @@ pub enum Commands {
         /// Pretty-print JSON output
         #[arg(long)]
         pretty: bool,
+
+        /// Warn about potential false sharing between atomic members on the same cache line
+        #[arg(long)]
+        warn_false_sharing: bool,
     },
 
     /// Compare struct layouts between two binaries

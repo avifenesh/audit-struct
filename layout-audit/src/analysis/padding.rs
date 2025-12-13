@@ -51,6 +51,7 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
             cache_line_density: 0.0,
             padding_holes,
             partial,
+            false_sharing: None,
         };
         return;
     }
@@ -119,5 +120,6 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
         cache_line_density,
         padding_holes,
         partial,
+        false_sharing: None,
     };
 }

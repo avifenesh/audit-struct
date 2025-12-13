@@ -74,11 +74,13 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
 
             gimli::DW_TAG_const_type
             | gimli::DW_TAG_volatile_type
-            | gimli::DW_TAG_restrict_type => {
+            | gimli::DW_TAG_restrict_type
+            | gimli::DW_TAG_atomic_type => {
                 let prefix = match tag {
                     gimli::DW_TAG_const_type => "const ",
                     gimli::DW_TAG_volatile_type => "volatile ",
                     gimli::DW_TAG_restrict_type => "restrict ",
+                    gimli::DW_TAG_atomic_type => "_Atomic ",
                     _ => "",
                 };
                 if let Some(type_offset) = self.get_type_ref(&entry)? {

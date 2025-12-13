@@ -34,6 +34,8 @@ pub struct LayoutMetrics {
     pub padding_holes: Vec<PaddingHole>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub partial: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub false_sharing: Option<FalseSharingAnalysis>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -47,6 +49,30 @@ pub struct PaddingHole {
 pub struct SourceLocation {
     pub file: String,
     pub line: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FalseSharingWarning {
+    pub member_a: String,
+    pub member_b: String,
+    pub cache_line: u64,
+    pub cache_line_offset: u64,
+    pub distance: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct FalseSharingAnalysis {
+    pub atomic_members: Vec<AtomicMember>,
+    pub warnings: Vec<FalseSharingWarning>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AtomicMember {
+    pub name: String,
+    pub type_name: String,
+    pub offset: u64,
+    pub size: u64,
+    pub cache_line: u64,
 }
 
 impl StructLayout {
