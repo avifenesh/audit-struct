@@ -6,6 +6,20 @@ use layout_audit::{
 };
 use std::path::Path;
 
+/// Configuration for the inspect command
+struct InspectConfig<'a> {
+    binary_path: &'a Path,
+    filter: Option<&'a str>,
+    output_format: OutputFormat,
+    sort_by: SortField,
+    top: Option<usize>,
+    min_padding: Option<u64>,
+    no_color: bool,
+    cache_line_size: u32,
+    pretty: bool,
+    warn_false_sharing: bool,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -22,18 +36,19 @@ fn main() -> Result<()> {
             pretty,
             warn_false_sharing,
         } => {
-            run_inspect(
-                &binary,
-                filter.as_deref(),
-                output,
+            let config = InspectConfig {
+                binary_path: &binary,
+                filter: filter.as_deref(),
+                output_format: output,
                 sort_by,
                 top,
                 min_padding,
                 no_color,
-                cache_line,
+                cache_line_size: cache_line,
                 pretty,
                 warn_false_sharing,
-            )?;
+            };
+            run_inspect(&config)?;
         }
         Commands::Diff { old, new, filter, output, cache_line, fail_on_regression } => {
             let has_regression = run_diff(&old, &new, filter.as_deref(), output, cache_line)?;
@@ -49,30 +64,19 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-fn run_inspect(
-    binary_path: &Path,
-    filter: Option<&str>,
-    output_format: OutputFormat,
-    sort_by: SortField,
-    top: Option<usize>,
-    min_padding: Option<u64>,
-    no_color: bool,
-    cache_line_size: u32,
-    pretty: bool,
-    warn_false_sharing: bool,
-) -> Result<()> {
-    let binary = BinaryData::load(binary_path)
-        .with_context(|| format!("Failed to load binary: {}", binary_path.display()))?;
+fn run_inspect(config: &InspectConfig<'_>) -> Result<()> {
+    let binary = BinaryData::load(config.binary_path)
+        .with_context(|| format!("Failed to load binary: {}", config.binary_path.display()))?;
 
     let loaded = binary.load_dwarf().context("Failed to load DWARF debug info")?;
 
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf.find_structs(filter).context("Failed to parse struct layouts")?;
+    let mut layouts =
+        dwarf.find_structs(config.filter).context("Failed to parse struct layouts")?;
 
     if layouts.is_empty() {
-        if let Some(f) = filter {
+        if let Some(f) = config.filter {
             eprintln!("No structs found matching filter: {}", f);
         } else {
             eprintln!("No structs found in binary");
@@ -81,14 +85,14 @@ fn run_inspect(
     }
 
     for layout in &mut layouts {
-        analyze_layout(layout, cache_line_size);
-        if warn_false_sharing {
-            let fs_analysis = analyze_false_sharing(layout, cache_line_size);
+        analyze_layout(layout, config.cache_line_size);
+        if config.warn_false_sharing {
+            let fs_analysis = analyze_false_sharing(layout, config.cache_line_size);
             layout.metrics.false_sharing = Some(fs_analysis);
         }
     }
 
-    if let Some(min) = min_padding {
+    if let Some(min) = config.min_padding {
         layouts.retain(|l| l.metrics.padding_bytes >= min);
     }
 
@@ -97,31 +101,37 @@ fn run_inspect(
         return Ok(());
     }
 
-    match sort_by {
+    match config.sort_by {
         SortField::Name => layouts.sort_by(|a, b| a.name.cmp(&b.name)),
         SortField::Size => layouts.sort_by(|a, b| b.size.cmp(&a.size)),
         SortField::Padding => {
             layouts.sort_by(|a, b| b.metrics.padding_bytes.cmp(&a.metrics.padding_bytes))
         }
         SortField::PaddingPct => layouts.sort_by(|a, b| {
-            b.metrics
-                .padding_percentage
-                .partial_cmp(&a.metrics.padding_percentage)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            match (a.metrics.padding_percentage.is_nan(), b.metrics.padding_percentage.is_nan()) {
+                (true, true) => std::cmp::Ordering::Equal,
+                (true, false) => std::cmp::Ordering::Greater,
+                (false, true) => std::cmp::Ordering::Less,
+                (false, false) => b
+                    .metrics
+                    .padding_percentage
+                    .partial_cmp(&a.metrics.padding_percentage)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            }
         }),
     }
 
-    if let Some(n) = top {
+    if let Some(n) = config.top {
         layouts.truncate(n);
     }
 
-    let output_str = match output_format {
+    let output_str = match config.output_format {
         OutputFormat::Table => {
-            let formatter = TableFormatter::new(no_color, cache_line_size);
+            let formatter = TableFormatter::new(config.no_color, config.cache_line_size);
             formatter.format(&layouts)
         }
         OutputFormat::Json => {
-            let formatter = JsonFormatter::new(pretty);
+            let formatter = JsonFormatter::new(config.pretty);
             formatter.format(&layouts)
         }
     };
