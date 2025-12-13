@@ -22,3 +22,4 @@ tests/fixtures/multifile/*.s
 tests/fixtures/multifile/*.bc
 tests/fixtures/multifile/trading_system
 tests/fixtures/multifile/trading_system.dSYM/
+CLAUDE.md
