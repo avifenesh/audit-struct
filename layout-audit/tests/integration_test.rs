@@ -1,4 +1,4 @@
-use struct_audit::{BinaryData, DwarfContext, analyze_layout};
+use layout_audit::{BinaryData, DwarfContext, analyze_layout};
 
 /// Get the path to the test fixture binary.
 /// On macOS, debug info is in a separate dSYM bundle.
@@ -280,7 +280,7 @@ fn create_temp_config(content: &str) -> std::path::PathBuf {
     let temp_dir = std::env::temp_dir();
     let unique_id = COUNTER.fetch_add(1, Ordering::SeqCst);
     let config_path =
-        temp_dir.join(format!("struct-audit-test-{}-{}.yaml", std::process::id(), unique_id));
+        temp_dir.join(format!("layout-audit-test-{}-{}.yaml", std::process::id(), unique_id));
     std::fs::write(&config_path, content).expect("Failed to write temp config");
     config_path
 }

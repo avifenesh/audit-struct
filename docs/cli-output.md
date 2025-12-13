@@ -2,7 +2,7 @@
 
 ## JSON Output Format
 
-When using `--output json` or `-o json`, struct-audit outputs JSON conforming to this schema.
+When using `--output json` or `-o json`, layout-audit outputs JSON conforming to this schema.
 
 ### Inspect Command
 
@@ -144,7 +144,7 @@ Violations are printed to stderr. JSON output shows the same data structured.
 
 ## Budget Configuration
 
-`.struct-audit.yaml`:
+`.layout-audit.yaml`:
 
 ```yaml
 budgets:

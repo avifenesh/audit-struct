@@ -11,7 +11,7 @@ env:
 
 defaults:
   run:
-    working-directory: struct-audit
+    working-directory: layout-audit
 
 jobs:
   check:
@@ -23,7 +23,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: struct-audit
+          workspaces: layout-audit
 
       - name: Check formatting
         run: cargo fmt --check
@@ -51,7 +51,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: struct-audit
+          workspaces: layout-audit
 
       - name: Build
         run: cargo build
@@ -76,7 +76,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: struct-audit
+          workspaces: layout-audit
 
       - name: Build
         run: cargo build
@@ -111,7 +111,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: struct-audit
+          workspaces: layout-audit
 
       - name: Build
         run: cargo build

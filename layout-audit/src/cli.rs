@@ -2,16 +2,16 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "struct-audit")]
+#[command(name = "layout-audit")]
 #[command(
     author,
     version,
     about = "Analyze binary memory layouts to detect padding inefficiencies"
 )]
 #[command(
-    long_about = "struct-audit parses DWARF debugging information to visualize the physical \
+    long_about = "layout-audit parses DWARF debugging information to visualize the physical \
 layout of data structures, detect padding holes, and analyze cache line efficiency.\n\n\
-Example:\n  struct-audit inspect ./target/debug/myapp --filter MyStruct"
+Example:\n  layout-audit inspect ./target/debug/myapp --filter MyStruct"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -92,8 +92,8 @@ pub enum Commands {
         #[arg(value_name = "BINARY")]
         binary: PathBuf,
 
-        /// Path to config file (.struct-audit.yaml)
-        #[arg(short, long, default_value = ".struct-audit.yaml")]
+        /// Path to config file (.layout-audit.yaml)
+        #[arg(short, long, default_value = ".layout-audit.yaml")]
         config: PathBuf,
 
         /// Cache line size in bytes (must be > 0)

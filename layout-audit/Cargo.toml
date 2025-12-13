@@ -1,13 +1,13 @@
 [package]
-name = "struct-audit"
+name = "layout-audit"
 version = "0.2.2"
 edition = "2024"
 rust-version = "1.85"
 description = "Analyze binary memory layouts to detect padding inefficiencies"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/avifenesh/audit-struct"
-homepage = "https://github.com/avifenesh/audit-struct"
-documentation = "https://docs.rs/struct-audit"
+repository = "https://github.com/avifenesh/layout-audit"
+homepage = "https://github.com/avifenesh/layout-audit"
+documentation = "https://docs.rs/layout-audit"
 readme = "README.md"
 keywords = ["memory", "layout", "padding", "dwarf", "optimization"]
 categories = ["command-line-utilities", "development-tools::debugging", "development-tools::profiling"]

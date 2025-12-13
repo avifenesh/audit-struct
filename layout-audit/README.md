@@ -1,13 +1,13 @@
-# struct-audit
+# layout-audit
 
 Analyze binary memory layouts to detect padding inefficiencies.
 
-`struct-audit` parses DWARF debugging information to visualize the physical layout of data structures, detect padding holes, and analyze cache line efficiency.
+`layout-audit` parses DWARF debugging information to visualize the physical layout of data structures, detect padding holes, and analyze cache line efficiency.
 
 ## Installation
 
 ```bash
-cargo install struct-audit
+cargo install layout-audit
 ```
 
 Or build from source:
@@ -22,48 +22,48 @@ cargo build --release
 
 ```bash
 # Inspect all structs in a binary
-struct-audit inspect ./target/debug/myapp
+layout-audit inspect ./target/debug/myapp
 
 # Filter by struct name
-struct-audit inspect ./target/debug/myapp --filter MyStruct
+layout-audit inspect ./target/debug/myapp --filter MyStruct
 
 # Show top 10 structs with most padding
-struct-audit inspect ./target/debug/myapp --sort-by padding --top 10
+layout-audit inspect ./target/debug/myapp --sort-by padding --top 10
 
 # Only show structs with at least 8 bytes of padding
-struct-audit inspect ./target/debug/myapp --min-padding 8
+layout-audit inspect ./target/debug/myapp --min-padding 8
 
 # JSON output
-struct-audit inspect ./target/debug/myapp -o json
+layout-audit inspect ./target/debug/myapp -o json
 
 # Custom cache line size (default: 64)
-struct-audit inspect ./target/debug/myapp --cache-line 128
+layout-audit inspect ./target/debug/myapp --cache-line 128
 ```
 
 ### diff - Compare layouts between binaries
 
 ```bash
 # Compare struct layouts between two builds
-struct-audit diff ./old-binary ./new-binary
+layout-audit diff ./old-binary ./new-binary
 
 # Filter to specific structs
-struct-audit diff ./old-binary ./new-binary --filter Order
+layout-audit diff ./old-binary ./new-binary --filter Order
 
 # Fail CI if any struct grew in size or padding
-struct-audit diff ./old-binary ./new-binary --fail-on-regression
+layout-audit diff ./old-binary ./new-binary --fail-on-regression
 
 # JSON output for CI parsing
-struct-audit diff ./old-binary ./new-binary -o json
+layout-audit diff ./old-binary ./new-binary -o json
 ```
 
 ### check - Enforce budget constraints
 
 ```bash
 # Check structs against budget defined in config file
-struct-audit check ./target/debug/myapp --config .struct-audit.yaml
+layout-audit check ./target/debug/myapp --config .layout-audit.yaml
 ```
 
-Budget configuration (`.struct-audit.yaml`):
+Budget configuration (`.layout-audit.yaml`):
 
 ```yaml
 budgets:
@@ -101,7 +101,7 @@ Summary: 10 useful bytes, 6 padding bytes (37.5%), cache density: 15.6%
 
 ## CI Integration
 
-Add struct-audit to your GitHub Actions workflow:
+Add layout-audit to your GitHub Actions workflow:
 
 ```yaml
 name: Memory Layout Check
@@ -109,19 +109,19 @@ name: Memory Layout Check
 on: [push, pull_request]
 
 jobs:
-  struct-audit:
+  layout-audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install struct-audit
-        run: cargo install struct-audit
+      - name: Install layout-audit
+        run: cargo install layout-audit
 
       - name: Build with debug info
         run: cargo build  # debug profile includes DWARF by default
 
       - name: Check struct budgets
-        run: struct-audit check ./target/debug/myapp --config .struct-audit.yaml
+        run: layout-audit check ./target/debug/myapp --config .layout-audit.yaml
 
       # Optional: Compare against main branch
       - name: Diff against baseline
@@ -133,7 +133,7 @@ jobs:
           cargo build --target-dir target-baseline
           git checkout -
           # Compare
-          struct-audit diff ./target-baseline/debug/myapp ./target/debug/myapp --fail-on-regression
+          layout-audit diff ./target-baseline/debug/myapp ./target/debug/myapp --fail-on-regression
 ```
 
 ## Requirements

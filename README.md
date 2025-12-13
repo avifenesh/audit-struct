@@ -1,15 +1,15 @@
-# struct-audit
+# layout-audit
 
-[![CI](https://github.com/avifenesh/audit-struct/actions/workflows/ci.yml/badge.svg)](https://github.com/avifenesh/audit-struct/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](struct-audit/LICENSE-MIT)
+[![CI](https://github.com/avifenesh/layout-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/avifenesh/layout-audit/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](layout-audit/LICENSE-MIT)
 
 **Analyze binary memory layouts to detect padding inefficiencies.**
 
-struct-audit parses DWARF debugging information to visualize the physical layout of data structures, detect padding holes, and analyze cache line efficiency. Find performance bugs before they hit production.
+layout-audit parses DWARF debugging information to visualize the physical layout of data structures, detect padding holes, and analyze cache line efficiency. Find performance bugs before they hit production.
 
-## Why struct-audit?
+## Why layout-audit?
 
-Modern CPUs are fast, but memory is slow. Poorly laid out structs waste cache lines and cause latency spikes. struct-audit makes memory layout issues visible and measurable.
+Modern CPUs are fast, but memory is slow. Poorly laid out structs waste cache lines and cause latency spikes. layout-audit makes memory layout issues visible and measurable.
 
 ```
 struct InternalPadding (16 bytes, 37.5% padding, 1 cache line)
@@ -31,14 +31,14 @@ Summary: 10 useful bytes, 6 padding bytes (37.5%), cache density: 15.6%
 ## Installation
 
 ```bash
-cargo install struct-audit
+cargo install layout-audit
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/avifenesh/audit-struct.git
-cd audit-struct/struct-audit
+git clone https://github.com/avifenesh/layout-audit.git
+cd layout-audit/layout-audit
 cargo build --release
 ```
 
@@ -46,27 +46,27 @@ cargo build --release
 
 ```bash
 # Inspect all structs in a binary
-struct-audit inspect ./target/debug/myapp
+layout-audit inspect ./target/debug/myapp
 
 # Filter by struct name
-struct-audit inspect ./target/debug/myapp --filter MyStruct
+layout-audit inspect ./target/debug/myapp --filter MyStruct
 
 # JSON output for CI integration
-struct-audit inspect ./target/debug/myapp --output json
+layout-audit inspect ./target/debug/myapp --output json
 
 # Compare layouts between two binaries
-struct-audit diff ./old-binary ./new-binary
+layout-audit diff ./old-binary ./new-binary
 
 # Fail CI if regressions found (size or padding increased)
-struct-audit diff ./old-binary ./new-binary --fail-on-regression
+layout-audit diff ./old-binary ./new-binary --fail-on-regression
 
 # Check against budget constraints from config file
-struct-audit check ./target/debug/myapp --config .struct-audit.yaml
+layout-audit check ./target/debug/myapp --config .layout-audit.yaml
 ```
 
 ### Budget Config Example
 
-Create `.struct-audit.yaml`:
+Create `.layout-audit.yaml`:
 
 ```yaml
 budgets:
@@ -97,7 +97,7 @@ See the [docs](./docs/) folder for detailed documentation:
 
 ## Use Cases
 
-| Domain | Problem | How struct-audit helps |
+| Domain | Problem | How layout-audit helps |
 |--------|---------|------------------------|
 | **HFT/FinTech** | Latency-sensitive code | Catch padding waste that causes cache misses |
 | **Embedded/IoT** | RAM constraints | Optimize struct sizes for memory-limited devices |
@@ -122,7 +122,7 @@ cargo fmt
 
 Licensed under either of:
 
-- Apache License, Version 2.0 ([LICENSE-APACHE](struct-audit/LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](struct-audit/LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0 ([LICENSE-APACHE](layout-audit/LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+- MIT license ([LICENSE-MIT](layout-audit/LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.

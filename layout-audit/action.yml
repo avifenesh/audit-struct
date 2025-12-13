@@ -1,4 +1,4 @@
-name: 'struct-audit'
+name: 'layout-audit'
 description: 'Analyze binary memory layouts to detect padding inefficiencies'
 author: 'avifen'
 
@@ -20,7 +20,7 @@ inputs:
   config:
     description: 'Path to config file (for check command)'
     required: false
-    default: '.struct-audit.yaml'
+    default: '.layout-audit.yaml'
   filter:
     description: 'Filter structs by name (substring match)'
     required: false
@@ -43,28 +43,28 @@ inputs:
     required: false
     default: 'false'
   version:
-    description: 'Version of struct-audit to use'
+    description: 'Version of layout-audit to use'
     required: false
     default: 'latest'
 
 outputs:
   report:
-    description: 'The struct-audit output'
+    description: 'The layout-audit output'
     value: ${{ steps.run.outputs.report }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Install struct-audit
+    - name: Install layout-audit
       shell: bash
       run: |
         if [ "${{ inputs.version }}" = "latest" ]; then
-          cargo install struct-audit
+          cargo install layout-audit
         else
-          cargo install struct-audit --version ${{ inputs.version }}
+          cargo install layout-audit --version ${{ inputs.version }}
         fi
 
-    - name: Run struct-audit
+    - name: Run layout-audit
       id: run
       shell: bash
       env:
@@ -121,8 +121,8 @@ runs:
             ;;
         esac
 
-        echo "Running: struct-audit ${args[*]}"
-        OUTPUT=$(struct-audit "${args[@]}" 2>&1)
+        echo "Running: layout-audit ${args[*]}"
+        OUTPUT=$(layout-audit "${args[@]}" 2>&1)
         EXIT_CODE=$?
 
         echo "$OUTPUT"

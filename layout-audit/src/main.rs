@@ -1,10 +1,10 @@
 use anyhow::{Context, Result, bail};
 use clap::Parser;
-use std::path::Path;
-use struct_audit::{
+use layout_audit::{
     BinaryData, Cli, Commands, DwarfContext, JsonFormatter, OutputFormat, SortField,
     TableFormatter, analyze_layout, diff_layouts,
 };
+use std::path::Path;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -166,7 +166,7 @@ fn run_diff(
     Ok(diff.has_regressions())
 }
 
-fn print_diff_table(diff: &struct_audit::DiffResult) {
+fn print_diff_table(diff: &layout_audit::DiffResult) {
     use colored::Colorize;
 
     if !diff.has_changes() {
@@ -217,8 +217,8 @@ fn print_diff_table(diff: &struct_audit::DiffResult) {
 
             for mc in &c.member_changes {
                 let prefix = match mc.kind {
-                    struct_audit::diff::MemberChangeKind::Added => "+".green(),
-                    struct_audit::diff::MemberChangeKind::Removed => "-".red(),
+                    layout_audit::diff::MemberChangeKind::Added => "+".green(),
+                    layout_audit::diff::MemberChangeKind::Removed => "-".red(),
                     _ => "~".yellow(),
                 };
                 println!("      {} {}: {}", prefix, mc.name, mc.details);
@@ -239,7 +239,7 @@ fn print_diff_table(diff: &struct_audit::DiffResult) {
 fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Result<()> {
     if !config_path.exists() {
         bail!(
-            "Config file not found: {}\n\nCreate a .struct-audit.yaml with budget constraints:\n\n\
+            "Config file not found: {}\n\nCreate a .layout-audit.yaml with budget constraints:\n\n\
             budgets:\n  MyStruct:\n    max_size: 64\n    max_padding: 8\n    max_padding_percent: 10.0",
             config_path.display()
         );

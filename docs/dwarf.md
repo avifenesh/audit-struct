@@ -2,7 +2,7 @@
 
 ## Overview
 
-DWARF (Debugging With Attributed Record Formats) is the debug information format used by GCC, Clang, and rustc. struct-audit parses DWARF to extract struct layouts.
+DWARF (Debugging With Attributed Record Formats) is the debug information format used by GCC, Clang, and rustc. layout-audit parses DWARF to extract struct layouts.
 
 ## DWARF Structure
 
