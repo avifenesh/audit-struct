@@ -51,28 +51,44 @@ pub struct SourceLocation {
     pub line: u64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct FalseSharingWarning {
     pub member_a: String,
     pub member_b: String,
     pub cache_line: u64,
-    pub cache_line_offset: u64,
-    pub distance: u64,
+    /// Gap in bytes between member_a's end and member_b's start.
+    /// Negative = overlap, Zero = adjacent, Positive = gap
+    pub gap_bytes: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CacheLineSpanningWarning {
+    pub member: String,
+    pub type_name: String,
+    pub offset: u64,
+    pub size: u64,
+    pub start_cache_line: u64,
+    pub end_cache_line: u64,
+    pub lines_spanned: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Default, PartialEq, Eq)]
 pub struct FalseSharingAnalysis {
     pub atomic_members: Vec<AtomicMember>,
     pub warnings: Vec<FalseSharingWarning>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub spanning_warnings: Vec<CacheLineSpanningWarning>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AtomicMember {
     pub name: String,
     pub type_name: String,
     pub offset: u64,
     pub size: u64,
     pub cache_line: u64,
+    pub end_cache_line: u64,
+    pub spans_cache_lines: bool,
 }
 
 impl StructLayout {

@@ -165,8 +165,8 @@ impl TableFormatter {
         ));
 
         if let Some(ref fs) = layout.metrics.false_sharing {
-            if !fs.warnings.is_empty() {
-                let header = "\nPotential False Sharing:";
+            if !fs.spanning_warnings.is_empty() {
+                let header = "\nCache Line Spanning (severe):";
                 if self.no_color {
                     output.push_str(header);
                 } else {
@@ -174,10 +174,43 @@ impl TableFormatter {
                 }
                 output.push('\n');
 
-                for w in &fs.warnings {
+                for w in &fs.spanning_warnings {
                     let msg = format!(
-                        "  - '{}' and '{}' share cache line {} (offset {}, {} bytes apart)",
-                        w.member_a, w.member_b, w.cache_line, w.cache_line_offset, w.distance
+                        "  - '{}' ({}) at offset {} spans {} cache lines ({}-{})",
+                        w.member,
+                        w.type_name,
+                        w.offset,
+                        w.lines_spanned,
+                        w.start_cache_line,
+                        w.end_cache_line
+                    );
+                    if self.no_color {
+                        output.push_str(&msg);
+                    } else {
+                        output.push_str(&msg.red().to_string());
+                    }
+                    output.push('\n');
+                }
+            }
+
+            if !fs.warnings.is_empty() {
+                let header = "\nPotential False Sharing:";
+                if self.no_color {
+                    output.push_str(header);
+                } else {
+                    output.push_str(&header.yellow().bold().to_string());
+                }
+                output.push('\n');
+
+                for w in &fs.warnings {
+                    let gap_desc = match w.gap_bytes.cmp(&0) {
+                        std::cmp::Ordering::Less => format!("{} bytes overlap", -w.gap_bytes),
+                        std::cmp::Ordering::Equal => "adjacent".to_string(),
+                        std::cmp::Ordering::Greater => format!("{} byte gap", w.gap_bytes),
+                    };
+                    let msg = format!(
+                        "  - '{}' and '{}' share cache line {} ({})",
+                        w.member_a, w.member_b, w.cache_line, gap_desc
                     );
                     if self.no_color {
                         output.push_str(&msg);

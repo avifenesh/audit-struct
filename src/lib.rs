@@ -15,6 +15,6 @@ pub use error::{Error, Result};
 pub use loader::{BinaryData, LoadedDwarf};
 pub use output::{JsonFormatter, TableFormatter};
 pub use types::{
-    AtomicMember, FalseSharingAnalysis, FalseSharingWarning, LayoutMetrics, MemberLayout,
-    PaddingHole, SourceLocation, StructLayout,
+    AtomicMember, CacheLineSpanningWarning, FalseSharingAnalysis, FalseSharingWarning,
+    LayoutMetrics, MemberLayout, PaddingHole, SourceLocation, StructLayout,
 };

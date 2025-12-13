@@ -1,17 +1,24 @@
-# Rust
-/target/
-**/*.rs.bk
+/target
 Cargo.lock
-
-# IDE
-.idea/
-.vscode/
 *.swp
 *.swo
+*~
 .DS_Store
 
-# Test artifacts
-*.dSYM/
+# Build artifacts
+*.o
+*.i
+*.s
+*.bc
 
-# AI instructions (symlink to private repo)
-CLAUDE.md
+# Test binaries (compiled on demand)
+tests/fixtures/*.o
+tests/fixtures/*.so
+tests/fixtures/bin/
+tests/fixtures/rust_test/target/
+tests/fixtures/multifile/*.o
+tests/fixtures/multifile/*.i
+tests/fixtures/multifile/*.s
+tests/fixtures/multifile/*.bc
+tests/fixtures/multifile/trading_system
+tests/fixtures/multifile/trading_system.dSYM/
