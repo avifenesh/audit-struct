@@ -49,7 +49,7 @@ const ATOMIC_PATTERNS: &[&str] = &[
     "arc_swap::ArcSwapAny",
 ];
 
-fn is_atomic_type(type_name: &str) -> bool {
+fn is_atomic_type_by_name(type_name: &str) -> bool {
     ATOMIC_PATTERNS.iter().any(|pattern| type_name.contains(pattern))
 }
 
@@ -59,7 +59,8 @@ pub fn analyze_false_sharing(layout: &StructLayout, cache_line_size: u32) -> Fal
     let atomic_members: Vec<AtomicMember> = layout
         .members
         .iter()
-        .filter(|m| is_atomic_type(&m.type_name))
+        // Use DWARF-detected is_atomic flag OR fall back to string pattern matching
+        .filter(|m| m.is_atomic || is_atomic_type_by_name(&m.type_name))
         .filter_map(|m| {
             let offset = m.offset?;
             let size = m.size?;

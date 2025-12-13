@@ -21,6 +21,10 @@ pub struct MemberLayout {
     pub bit_offset: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bit_size: Option<u64>,
+    /// True if the type was marked with DW_TAG_atomic_type in DWARF debug info.
+    /// This provides more reliable atomic detection than string pattern matching.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_atomic: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -106,7 +110,12 @@ impl StructLayout {
 
 impl MemberLayout {
     pub fn new(name: String, type_name: String, offset: Option<u64>, size: Option<u64>) -> Self {
-        Self { name, type_name, offset, size, bit_offset: None, bit_size: None }
+        Self { name, type_name, offset, size, bit_offset: None, bit_size: None, is_atomic: false }
+    }
+
+    pub fn with_atomic(mut self, is_atomic: bool) -> Self {
+        self.is_atomic = is_atomic;
+        self
     }
 
     pub fn end_offset(&self) -> Option<u64> {

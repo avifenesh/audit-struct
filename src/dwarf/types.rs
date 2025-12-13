@@ -3,11 +3,14 @@ use crate::loader::DwarfSlice;
 use gimli::{AttributeValue, Dwarf, Unit, UnitOffset};
 use std::collections::HashMap;
 
+/// Result of resolving a type: (type_name, size, is_atomic)
+pub type TypeInfo = (String, Option<u64>, bool);
+
 pub struct TypeResolver<'a, 'b> {
     dwarf: &'b Dwarf<DwarfSlice<'a>>,
     unit: &'b Unit<DwarfSlice<'a>>,
     address_size: u8,
-    cache: HashMap<UnitOffset, (String, Option<u64>)>,
+    cache: HashMap<UnitOffset, TypeInfo>,
 }
 
 impl<'a, 'b> TypeResolver<'a, 'b> {
@@ -19,12 +22,12 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
         Self { dwarf, unit, address_size, cache: HashMap::new() }
     }
 
-    pub fn resolve_type(&mut self, offset: UnitOffset) -> Result<(String, Option<u64>)> {
+    pub fn resolve_type(&mut self, offset: UnitOffset) -> Result<TypeInfo> {
         if let Some(cached) = self.cache.get(&offset) {
             return Ok(cached.clone());
         }
 
-        let result = self.resolve_type_inner(offset, 0)?;
+        let result = self.resolve_type_inner(offset, 0, false)?;
         self.cache.insert(offset, result.clone());
         Ok(result)
     }
@@ -33,9 +36,10 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
         &mut self,
         offset: UnitOffset,
         depth: usize,
-    ) -> Result<(String, Option<u64>)> {
+        is_atomic: bool,
+    ) -> Result<TypeInfo> {
         if depth > 20 {
-            return Ok(("...".to_string(), None));
+            return Ok(("...".to_string(), None, is_atomic));
         }
 
         let entry = self
@@ -49,63 +53,72 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
             gimli::DW_TAG_base_type => {
                 let name = self.get_type_name(&entry)?.unwrap_or_else(|| "?".to_string());
                 let size = self.get_byte_size(&entry)?;
-                Ok((name, size))
+                Ok((name, size, is_atomic))
             }
 
             gimli::DW_TAG_pointer_type => {
                 let pointee = if let Some(type_offset) = self.get_type_ref(&entry)? {
-                    let (pointee_name, _) = self.resolve_type_inner(type_offset, depth + 1)?;
+                    let (pointee_name, _, _) = self.resolve_type_inner(type_offset, depth + 1, false)?;
                     pointee_name
                 } else {
                     "void".to_string()
                 };
-                Ok((format!("*{}", pointee), Some(self.address_size as u64)))
+                Ok((format!("*{}", pointee), Some(self.address_size as u64), is_atomic))
             }
 
             gimli::DW_TAG_reference_type => {
                 let referee = if let Some(type_offset) = self.get_type_ref(&entry)? {
-                    let (referee_name, _) = self.resolve_type_inner(type_offset, depth + 1)?;
+                    let (referee_name, _, _) = self.resolve_type_inner(type_offset, depth + 1, false)?;
                     referee_name
                 } else {
                     "void".to_string()
                 };
-                Ok((format!("&{}", referee), Some(self.address_size as u64)))
+                Ok((format!("&{}", referee), Some(self.address_size as u64), is_atomic))
             }
 
             gimli::DW_TAG_const_type
             | gimli::DW_TAG_volatile_type
-            | gimli::DW_TAG_restrict_type
-            | gimli::DW_TAG_atomic_type => {
+            | gimli::DW_TAG_restrict_type => {
                 let prefix = match tag {
                     gimli::DW_TAG_const_type => "const ",
                     gimli::DW_TAG_volatile_type => "volatile ",
                     gimli::DW_TAG_restrict_type => "restrict ",
-                    gimli::DW_TAG_atomic_type => "_Atomic ",
                     _ => "",
                 };
                 if let Some(type_offset) = self.get_type_ref(&entry)? {
-                    let (inner_name, size) = self.resolve_type_inner(type_offset, depth + 1)?;
-                    Ok((format!("{}{}", prefix, inner_name), size))
+                    let (inner_name, size, inner_atomic) = self.resolve_type_inner(type_offset, depth + 1, is_atomic)?;
+                    Ok((format!("{}{}", prefix, inner_name), size, inner_atomic))
                 } else {
-                    Ok((format!("{}void", prefix), None))
+                    Ok((format!("{}void", prefix), None, is_atomic))
+                }
+            }
+
+            gimli::DW_TAG_atomic_type => {
+                // Mark as atomic and propagate through the type chain
+                if let Some(type_offset) = self.get_type_ref(&entry)? {
+                    let (inner_name, size, _) = self.resolve_type_inner(type_offset, depth + 1, true)?;
+                    Ok((format!("_Atomic {}", inner_name), size, true))
+                } else {
+                    Ok(("_Atomic void".to_string(), None, true))
                 }
             }
 
             gimli::DW_TAG_typedef => {
                 let name = self.get_type_name(&entry)?;
                 if let Some(type_offset) = self.get_type_ref(&entry)? {
-                    let (_, size) = self.resolve_type_inner(type_offset, depth + 1)?;
-                    Ok((name.unwrap_or_else(|| "typedef".to_string()), size))
+                    let (_, size, inner_atomic) = self.resolve_type_inner(type_offset, depth + 1, is_atomic)?;
+                    // Propagate atomic flag through typedefs
+                    Ok((name.unwrap_or_else(|| "typedef".to_string()), size, inner_atomic || is_atomic))
                 } else {
-                    Ok((name.unwrap_or_else(|| "typedef".to_string()), None))
+                    Ok((name.unwrap_or_else(|| "typedef".to_string()), None, is_atomic))
                 }
             }
 
             gimli::DW_TAG_array_type => {
                 let element_type = if let Some(type_offset) = self.get_type_ref(&entry)? {
-                    self.resolve_type_inner(type_offset, depth + 1)?
+                    self.resolve_type_inner(type_offset, depth + 1, is_atomic)?
                 } else {
-                    ("?".to_string(), None)
+                    ("?".to_string(), None, is_atomic)
                 };
 
                 let count = self.get_array_count(&entry)?;
@@ -115,29 +128,29 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
                 };
 
                 let count_str = count.map(|c| c.to_string()).unwrap_or_else(|| "?".to_string());
-                Ok((format!("[{}; {}]", element_type.0, count_str), size))
+                Ok((format!("[{}; {}]", element_type.0, count_str), size, element_type.2))
             }
 
             gimli::DW_TAG_structure_type | gimli::DW_TAG_class_type | gimli::DW_TAG_union_type => {
                 let name = self.get_type_name(&entry)?.unwrap_or_else(|| "<anonymous>".to_string());
                 let size = self.get_byte_size(&entry)?;
-                Ok((name, size))
+                Ok((name, size, is_atomic))
             }
 
             gimli::DW_TAG_enumeration_type => {
                 let name = self.get_type_name(&entry)?.unwrap_or_else(|| "enum".to_string());
                 let size = self.get_byte_size(&entry)?;
-                Ok((name, size))
+                Ok((name, size, is_atomic))
             }
 
             gimli::DW_TAG_subroutine_type => {
-                Ok(("fn(...)".to_string(), Some(self.address_size as u64)))
+                Ok(("fn(...)".to_string(), Some(self.address_size as u64), is_atomic))
             }
 
             _ => {
                 let name = self.get_type_name(&entry)?.unwrap_or_else(|| format!("?<{:?}>", tag));
                 let size = self.get_byte_size(&entry)?;
-                Ok((name, size))
+                Ok((name, size, is_atomic))
             }
         }
     }

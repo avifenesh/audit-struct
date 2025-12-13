@@ -147,7 +147,7 @@ impl<'a> DwarfContext<'a> {
     ) -> Result<Option<MemberLayout>> {
         let offset = self.get_member_offset(unit, entry)?;
 
-        let (type_name, size) = match entry.attr_value(gimli::DW_AT_type) {
+        let (type_name, size, is_atomic) = match entry.attr_value(gimli::DW_AT_type) {
             Ok(Some(AttributeValue::UnitRef(type_offset))) => {
                 type_resolver.resolve_type(type_offset)?
             }
@@ -157,14 +157,14 @@ impl<'a> DwarfContext<'a> {
                         gimli::UnitOffset(debug_info_offset.0.saturating_sub(unit_debug_offset.0));
                     type_resolver.resolve_type(unit_offset)?
                 } else {
-                    ("unknown".to_string(), None)
+                    ("unknown".to_string(), None, false)
                 }
             }
-            _ => ("unknown".to_string(), None),
+            _ => ("unknown".to_string(), None, false),
         };
 
         let name = format!("<base: {}>", type_name);
-        Ok(Some(MemberLayout::new(name, type_name, offset, size)))
+        Ok(Some(MemberLayout::new(name, type_name, offset, size).with_atomic(is_atomic)))
     }
 
     fn process_member(
@@ -175,7 +175,7 @@ impl<'a> DwarfContext<'a> {
     ) -> Result<Option<MemberLayout>> {
         let name = self.get_die_name(unit, entry)?.unwrap_or_else(|| "<anonymous>".to_string());
 
-        let (type_name, size) = match entry.attr_value(gimli::DW_AT_type) {
+        let (type_name, size, is_atomic) = match entry.attr_value(gimli::DW_AT_type) {
             Ok(Some(AttributeValue::UnitRef(type_offset))) => {
                 type_resolver.resolve_type(type_offset)?
             }
@@ -186,15 +186,15 @@ impl<'a> DwarfContext<'a> {
                         gimli::UnitOffset(debug_info_offset.0.saturating_sub(unit_debug_offset.0));
                     type_resolver.resolve_type(unit_offset)?
                 } else {
-                    ("unknown".to_string(), None)
+                    ("unknown".to_string(), None, false)
                 }
             }
-            _ => ("unknown".to_string(), None),
+            _ => ("unknown".to_string(), None, false),
         };
 
         let offset = self.get_member_offset(unit, entry)?;
 
-        let mut member = MemberLayout::new(name, type_name, offset, size);
+        let mut member = MemberLayout::new(name, type_name, offset, size).with_atomic(is_atomic);
 
         let read_u64_attr = |attr: gimli::DwAt| -> Option<u64> {
             match entry.attr_value(attr).ok().flatten()? {
@@ -300,7 +300,7 @@ impl<'a> DwarfContext<'a> {
 
     fn get_source_location(
         &self,
-        _unit: &Unit<DwarfSlice<'a>>,
+        unit: &Unit<DwarfSlice<'a>>,
         entry: &DebuggingInformationEntry<DwarfSlice<'a>>,
     ) -> Result<Option<SourceLocation>> {
         let file_index = match entry.attr_value(gimli::DW_AT_decl_file) {
@@ -314,8 +314,45 @@ impl<'a> DwarfContext<'a> {
             _ => return Ok(None),
         };
 
-        // File name resolution would require parsing .debug_line
-        // For MVP, just return the file index
-        Ok(Some(SourceLocation { file: format!("file#{}", file_index), line }))
+        // Try to resolve the file name from the line program header
+        let file_name = self.resolve_file_name(unit, file_index).unwrap_or_else(|| {
+            // Fall back to file index if resolution fails
+            format!("file#{}", file_index)
+        });
+
+        Ok(Some(SourceLocation { file: file_name, line }))
+    }
+
+    /// Resolve a file index to an actual file path using the .debug_line section.
+    fn resolve_file_name(&self, unit: &Unit<DwarfSlice<'a>>, file_index: u64) -> Option<String> {
+        // Get the line program for this unit
+        let line_program = unit.line_program.clone()?;
+
+        let header = line_program.header();
+
+        // File indices in DWARF are 1-based (0 means no file in DWARF 4, or the compilation
+        // directory in DWARF 5). We need to handle both cases.
+        let file = header.file(file_index)?;
+
+        // Get the file name
+        let file_name = self
+            .dwarf
+            .attr_string(unit, file.path_name())
+            .ok()?
+            .to_string_lossy()
+            .into_owned();
+
+        // Try to get the directory
+        if let Some(dir) = file.directory(header) {
+            if let Ok(dir_str) = self.dwarf.attr_string(unit, dir) {
+                let dir_name = dir_str.to_string_lossy();
+                if !dir_name.is_empty() {
+                    // Combine directory and file name
+                    return Some(format!("{}/{}", dir_name, file_name));
+                }
+            }
+        }
+
+        Some(file_name)
     }
 }
