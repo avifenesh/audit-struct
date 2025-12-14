@@ -42,8 +42,8 @@ pub struct LoadedDwarf<'a> {
     pub endian: RunTimeEndian,
     /// Pinned storage for decompressed sections. The Dwarf object holds slices
     /// pointing into this data, so it must remain at a stable address.
-    #[allow(dead_code)]
-    decompressed_sections: Pin<Box<DecompressedSections>>,
+    /// Named with underscore prefix to indicate intentional non-use (kept for lifetime).
+    _decompressed_sections: Pin<Box<DecompressedSections>>,
 }
 
 /// Standard DWARF section names that we need to load.
@@ -150,7 +150,7 @@ impl BinaryData {
             dwarf,
             address_size: if object.is_64() { 8 } else { 4 },
             endian,
-            decompressed_sections,
+            _decompressed_sections: decompressed_sections,
         })
     }
 }
