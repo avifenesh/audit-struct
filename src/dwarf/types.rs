@@ -58,7 +58,8 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
 
             gimli::DW_TAG_pointer_type => {
                 let pointee = if let Some(type_offset) = self.get_type_ref(&entry)? {
-                    let (pointee_name, _, _) = self.resolve_type_inner(type_offset, depth + 1, false)?;
+                    let (pointee_name, _, _) =
+                        self.resolve_type_inner(type_offset, depth + 1, false)?;
                     pointee_name
                 } else {
                     "void".to_string()
@@ -68,7 +69,8 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
 
             gimli::DW_TAG_reference_type => {
                 let referee = if let Some(type_offset) = self.get_type_ref(&entry)? {
-                    let (referee_name, _, _) = self.resolve_type_inner(type_offset, depth + 1, false)?;
+                    let (referee_name, _, _) =
+                        self.resolve_type_inner(type_offset, depth + 1, false)?;
                     referee_name
                 } else {
                     "void".to_string()
@@ -86,7 +88,8 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
                     _ => "",
                 };
                 if let Some(type_offset) = self.get_type_ref(&entry)? {
-                    let (inner_name, size, inner_atomic) = self.resolve_type_inner(type_offset, depth + 1, is_atomic)?;
+                    let (inner_name, size, inner_atomic) =
+                        self.resolve_type_inner(type_offset, depth + 1, is_atomic)?;
                     Ok((format!("{}{}", prefix, inner_name), size, inner_atomic))
                 } else {
                     Ok((format!("{}void", prefix), None, is_atomic))
@@ -96,7 +99,8 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
             gimli::DW_TAG_atomic_type => {
                 // Mark as atomic and propagate through the type chain
                 if let Some(type_offset) = self.get_type_ref(&entry)? {
-                    let (inner_name, size, _) = self.resolve_type_inner(type_offset, depth + 1, true)?;
+                    let (inner_name, size, _) =
+                        self.resolve_type_inner(type_offset, depth + 1, true)?;
                     Ok((format!("_Atomic {}", inner_name), size, true))
                 } else {
                     Ok(("_Atomic void".to_string(), None, true))
@@ -106,9 +110,14 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
             gimli::DW_TAG_typedef => {
                 let name = self.get_type_name(&entry)?;
                 if let Some(type_offset) = self.get_type_ref(&entry)? {
-                    let (_, size, inner_atomic) = self.resolve_type_inner(type_offset, depth + 1, is_atomic)?;
+                    let (_, size, inner_atomic) =
+                        self.resolve_type_inner(type_offset, depth + 1, is_atomic)?;
                     // Propagate atomic flag through typedefs
-                    Ok((name.unwrap_or_else(|| "typedef".to_string()), size, inner_atomic || is_atomic))
+                    Ok((
+                        name.unwrap_or_else(|| "typedef".to_string()),
+                        size,
+                        inner_atomic || is_atomic,
+                    ))
                 } else {
                     Ok((name.unwrap_or_else(|| "typedef".to_string()), None, is_atomic))
                 }

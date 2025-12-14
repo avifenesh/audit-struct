@@ -1,4 +1,4 @@
-// C++ template test structures for struct-audit
+// C++ template test structures for layout-audit
 // Tests various template instantiations and C++ specific features
 
 #include <cstdint>

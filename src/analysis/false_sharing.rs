@@ -1,7 +1,7 @@
 use crate::types::{
     AtomicMember, CacheLineSpanningWarning, FalseSharingAnalysis, FalseSharingWarning, StructLayout,
 };
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 const ATOMIC_PATTERNS: &[&str] = &[
     // Rust std atomics (full paths)
@@ -53,7 +53,12 @@ fn is_atomic_type_by_name(type_name: &str) -> bool {
     ATOMIC_PATTERNS.iter().any(|pattern| type_name.contains(pattern))
 }
 
+/// Analyzes a struct layout for potential false sharing issues.
+///
+/// # Panics
+/// Panics if `cache_line_size` is 0.
 pub fn analyze_false_sharing(layout: &StructLayout, cache_line_size: u32) -> FalseSharingAnalysis {
+    assert!(cache_line_size > 0, "cache_line_size must be > 0");
     let cache_line_size_u64 = cache_line_size as u64;
 
     let atomic_members: Vec<AtomicMember> = layout
@@ -68,7 +73,10 @@ pub fn analyze_false_sharing(layout: &StructLayout, cache_line_size: u32) -> Fal
                 return None;
             }
             let cache_line = offset / cache_line_size_u64;
-            let end_offset = offset + size - 1; // Last byte of the member
+            // Use checked arithmetic to handle malformed DWARF with extreme offsets
+            let Some(end_offset) = offset.checked_add(size).and_then(|v| v.checked_sub(1)) else {
+                return None; // Skip member with overflowing offset+size
+            };
             let end_cache_line = end_offset / cache_line_size_u64;
             let spans_cache_lines = end_cache_line > cache_line;
 
@@ -108,7 +116,8 @@ pub fn analyze_false_sharing(layout: &StructLayout, cache_line_size: u32) -> Fal
     }
 
     // Group atomics by all cache lines they touch (not just start)
-    let mut by_cache_line: HashMap<u64, Vec<&AtomicMember>> = HashMap::new();
+    // Use BTreeMap for deterministic iteration order (ascending by cache_line)
+    let mut by_cache_line: BTreeMap<u64, Vec<&AtomicMember>> = BTreeMap::new();
     for member in &atomic_members {
         for cache_line in member.cache_line..=member.end_cache_line {
             by_cache_line.entry(cache_line).or_default().push(member);
@@ -139,7 +148,7 @@ pub fn analyze_false_sharing(layout: &StructLayout, cache_line_size: u32) -> Fal
 
                 // gap_bytes = second.offset - (first.offset + first.size)
                 // Negative = overlap, Zero = adjacent, Positive = gap
-                let first_end = first.offset + first.size;
+                let first_end = first.offset.saturating_add(first.size);
                 let gap_bytes = second.offset as i64 - first_end as i64;
 
                 warnings.push(FalseSharingWarning {

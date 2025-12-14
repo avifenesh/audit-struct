@@ -335,12 +335,8 @@ impl<'a> DwarfContext<'a> {
         let file = header.file(file_index)?;
 
         // Get the file name
-        let file_name = self
-            .dwarf
-            .attr_string(unit, file.path_name())
-            .ok()?
-            .to_string_lossy()
-            .into_owned();
+        let file_name =
+            self.dwarf.attr_string(unit, file.path_name()).ok()?.to_string_lossy().into_owned();
 
         // Try to get the directory
         if let Some(dir) = file.directory(header) {

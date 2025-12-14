@@ -1,6 +1,11 @@
 use crate::types::{LayoutMetrics, PaddingHole, StructLayout};
 
+/// Analyzes a struct layout for padding holes and cache line metrics.
+///
+/// # Panics
+/// Panics if `cache_line_size` is 0.
 pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
+    assert!(cache_line_size > 0, "cache_line_size must be > 0");
     #[derive(Clone)]
     struct Span {
         start: u64,

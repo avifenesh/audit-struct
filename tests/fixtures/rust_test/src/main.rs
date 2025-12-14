@@ -1,4 +1,4 @@
-//! Test structs for struct-audit validation
+//! Test structs for layout-audit validation
 //! Contains various struct patterns to test DWARF parsing
 
 use std::hint::black_box;

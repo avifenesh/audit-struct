@@ -1,4 +1,4 @@
-// Test structures for struct-audit
+// Test structures for layout-audit
 
 // No padding - perfectly packed
 struct NoPadding {
