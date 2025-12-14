@@ -543,4 +543,91 @@ mod tests {
         assert_eq!(analysis.warnings.len(), 1);
         assert_eq!(analysis.warnings[0].cache_line, 1);
     }
+
+    // Coverage tests for edge cases and newly fixed paths
+
+    #[test]
+    fn test_no_atomics_returns_default() {
+        // Layout with only non-atomic members should return empty analysis
+        let layout = make_layout_with_members(vec![
+            MemberLayout::new("x".to_string(), "u64".to_string(), Some(0), Some(8)),
+            MemberLayout::new("y".to_string(), "u64".to_string(), Some(8), Some(8)),
+        ]);
+
+        let analysis = analyze_false_sharing(&layout, 64);
+
+        assert!(analysis.atomic_members.is_empty());
+        assert!(analysis.warnings.is_empty());
+        assert!(analysis.spanning_warnings.is_empty());
+    }
+
+    #[test]
+    fn test_overflow_offset_skipped() {
+        // Atomic with offset near u64::MAX that would overflow when adding size
+        // Should be skipped gracefully, not panic
+        let layout = make_layout_with_members(vec![
+            MemberLayout::new(
+                "normal".to_string(),
+                "std::sync::atomic::AtomicU64".to_string(),
+                Some(0),
+                Some(8),
+            ),
+            MemberLayout::new(
+                "overflow".to_string(),
+                "std::sync::atomic::AtomicU64".to_string(),
+                Some(u64::MAX - 3), // offset + size (8) would overflow
+                Some(8),
+            ),
+        ]);
+
+        let analysis = analyze_false_sharing(&layout, 64);
+
+        // Only the normal atomic should be included; overflow one is skipped
+        assert_eq!(analysis.atomic_members.len(), 1);
+        assert_eq!(analysis.atomic_members[0].name, "normal");
+        assert!(analysis.warnings.is_empty());
+    }
+
+    #[test]
+    fn test_duplicate_pair_dedupe_deterministic() {
+        // Two atomics that both span cache lines 0 and 1
+        // The pair should appear only ONCE, and always with the lowest cache_line (0)
+        // This tests both the dedupe logic AND the BTreeMap determinism fix
+        let layout = make_layout_with_members(vec![
+            MemberLayout::new(
+                "spanning_a".to_string(),
+                "std::sync::atomic::AtomicU64".to_string(),
+                Some(60), // spans cache lines 0 and 1
+                Some(8),
+            ),
+            MemberLayout::new(
+                "spanning_b".to_string(),
+                "std::sync::atomic::AtomicU64".to_string(),
+                Some(62), // also spans cache lines 0 and 1
+                Some(8),
+            ),
+        ]);
+
+        let analysis = analyze_false_sharing(&layout, 64);
+
+        assert_eq!(analysis.atomic_members.len(), 2);
+        // Only ONE warning for this pair (dedupe worked)
+        assert_eq!(analysis.warnings.len(), 1);
+        // Should always be cache_line 0 (BTreeMap iteration is deterministic, ascending)
+        assert_eq!(analysis.warnings[0].cache_line, 0);
+        assert_eq!(analysis.warnings[0].member_a, "spanning_a");
+        assert_eq!(analysis.warnings[0].member_b, "spanning_b");
+    }
+
+    #[test]
+    fn test_empty_layout_returns_default() {
+        // Layout with no members at all
+        let layout = make_layout_with_members(vec![]);
+
+        let analysis = analyze_false_sharing(&layout, 64);
+
+        assert!(analysis.atomic_members.is_empty());
+        assert!(analysis.warnings.is_empty());
+        assert!(analysis.spanning_warnings.is_empty());
+    }
 }

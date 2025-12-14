@@ -128,3 +128,167 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
         false_sharing: None,
     };
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::MemberLayout;
+
+    fn make_layout(size: u64, members: Vec<MemberLayout>) -> StructLayout {
+        let mut layout = StructLayout::new("TestStruct".to_string(), size, Some(8));
+        layout.members = members;
+        layout
+    }
+
+    #[test]
+    fn test_empty_members_no_spans() {
+        // Layout with no members at all - exercises the "spans.is_empty()" branch
+        let mut layout = make_layout(64, vec![]);
+
+        analyze_layout(&mut layout, 64);
+
+        assert_eq!(layout.metrics.total_size, 64);
+        assert_eq!(layout.metrics.useful_size, 0);
+        assert_eq!(layout.metrics.padding_bytes, 0);
+        assert_eq!(layout.metrics.padding_percentage, 0.0);
+        assert_eq!(layout.metrics.cache_lines_spanned, 1);
+        assert!(!layout.metrics.partial);
+        assert!(layout.metrics.padding_holes.is_empty());
+    }
+
+    #[test]
+    fn test_zero_size_layout_no_spans() {
+        // Layout with size=0 and no members
+        let mut layout = make_layout(0, vec![]);
+
+        analyze_layout(&mut layout, 64);
+
+        assert_eq!(layout.metrics.total_size, 0);
+        assert_eq!(layout.metrics.cache_lines_spanned, 0);
+        assert_eq!(layout.metrics.cache_line_density, 0.0);
+    }
+
+    #[test]
+    fn test_partial_layout_missing_offset() {
+        // Member with missing offset should set partial=true
+        let mut layout = make_layout(
+            16,
+            vec![
+                MemberLayout::new("a".to_string(), "u64".to_string(), Some(0), Some(8)),
+                MemberLayout::new("b".to_string(), "u64".to_string(), None, Some(8)), // missing offset
+            ],
+        );
+
+        analyze_layout(&mut layout, 64);
+
+        assert!(layout.metrics.partial);
+        // With partial=true, no padding holes should be reported
+        assert!(layout.metrics.padding_holes.is_empty());
+    }
+
+    #[test]
+    fn test_partial_layout_missing_size() {
+        // Member with missing size should set partial=true
+        let mut layout = make_layout(
+            16,
+            vec![
+                MemberLayout::new("a".to_string(), "u64".to_string(), Some(0), Some(8)),
+                MemberLayout::new("b".to_string(), "u64".to_string(), Some(8), None), // missing size
+            ],
+        );
+
+        analyze_layout(&mut layout, 64);
+
+        assert!(layout.metrics.partial);
+        assert!(layout.metrics.padding_holes.is_empty());
+    }
+
+    #[test]
+    fn test_zero_size_member_skipped() {
+        // Zero-size members should be skipped (not contribute to spans)
+        let mut layout = make_layout(
+            16,
+            vec![
+                MemberLayout::new("a".to_string(), "u64".to_string(), Some(0), Some(8)),
+                MemberLayout::new("zst".to_string(), "()".to_string(), Some(8), Some(0)), // ZST
+                MemberLayout::new("b".to_string(), "u64".to_string(), Some(8), Some(8)),
+            ],
+        );
+
+        analyze_layout(&mut layout, 64);
+
+        assert!(!layout.metrics.partial);
+        assert_eq!(layout.metrics.useful_size, 16);
+    }
+
+    #[test]
+    fn test_overlapping_spans_merged() {
+        // Overlapping members (e.g., union-like) should be merged, not double-counted
+        let mut layout = make_layout(
+            16,
+            vec![
+                MemberLayout::new("a".to_string(), "u64".to_string(), Some(0), Some(16)),
+                MemberLayout::new("b".to_string(), "u64".to_string(), Some(4), Some(8)), // overlaps with a
+            ],
+        );
+
+        analyze_layout(&mut layout, 64);
+
+        // Should count as 16 bytes useful, not 24
+        assert_eq!(layout.metrics.useful_size, 16);
+        assert!(layout.metrics.padding_holes.is_empty());
+    }
+
+    #[test]
+    fn test_padding_hole_detected() {
+        // Gap between members should create a padding hole
+        let mut layout = make_layout(
+            24,
+            vec![
+                MemberLayout::new("a".to_string(), "u64".to_string(), Some(0), Some(8)),
+                // 8 bytes gap
+                MemberLayout::new("b".to_string(), "u64".to_string(), Some(16), Some(8)),
+            ],
+        );
+
+        analyze_layout(&mut layout, 64);
+
+        assert_eq!(layout.metrics.padding_bytes, 8);
+        assert_eq!(layout.metrics.padding_holes.len(), 1);
+        assert_eq!(layout.metrics.padding_holes[0].offset, 8);
+        assert_eq!(layout.metrics.padding_holes[0].size, 8);
+    }
+
+    #[test]
+    fn test_tail_padding_detected() {
+        // Gap at end of struct is tail padding
+        let mut layout = make_layout(
+            16,
+            vec![MemberLayout::new("a".to_string(), "u64".to_string(), Some(0), Some(8))],
+        );
+
+        analyze_layout(&mut layout, 64);
+
+        assert_eq!(layout.metrics.padding_bytes, 8);
+        assert_eq!(layout.metrics.padding_holes.len(), 1);
+        assert_eq!(layout.metrics.padding_holes[0].offset, 8);
+    }
+
+    #[test]
+    fn test_partial_layout_no_tail_padding_reported() {
+        // With partial=true, tail padding should NOT be reported
+        let mut layout = make_layout(
+            32,
+            vec![
+                MemberLayout::new("a".to_string(), "u64".to_string(), Some(0), Some(8)),
+                MemberLayout::new("b".to_string(), "u64".to_string(), None, Some(8)), // missing offset
+            ],
+        );
+
+        analyze_layout(&mut layout, 64);
+
+        assert!(layout.metrics.partial);
+        // No padding holes when partial (can't reliably detect them)
+        assert!(layout.metrics.padding_holes.is_empty());
+    }
+}

@@ -491,10 +491,10 @@ fn test_array_member_size() {
 
     let mut layouts = dwarf.find_structs(Some("WithArray")).expect("Failed to parse structs");
 
-    if layouts.is_empty() {
-        // WithArray may not exist in all fixtures, skip test
-        return;
-    }
+    assert!(
+        !layouts.is_empty(),
+        "WithArray struct should exist in test fixture - if not found, DWARF parsing may be broken"
+    );
 
     let layout = &mut layouts[0];
     analyze_layout(layout, 64);
@@ -610,6 +610,40 @@ fn test_diff_filter() {
         output.status.success(),
         "Diff with filter should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Verify filtering actually happened by checking the output
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+
+    // With identical binaries and filter "NoPadding", we should have:
+    // - unchanged_count > 0 (NoPadding struct exists and was matched)
+    // - added, removed, changed all empty (identical binaries)
+    let unchanged_count = parsed["unchanged_count"].as_u64().expect("unchanged_count should exist");
+    assert!(
+        unchanged_count > 0,
+        "Filter 'NoPadding' should match at least one struct, got unchanged_count={}",
+        unchanged_count
+    );
+
+    // Verify filtering excludes non-matching structs by running without filter
+    // and comparing counts
+    let unfiltered_output = std::process::Command::new("cargo")
+        .args(["run", "--", "diff", path.to_str().unwrap(), path.to_str().unwrap(), "-o", "json"])
+        .output()
+        .expect("Failed to run unfiltered diff");
+
+    let unfiltered_stdout = String::from_utf8_lossy(&unfiltered_output.stdout);
+    let unfiltered: serde_json::Value =
+        serde_json::from_str(&unfiltered_stdout).expect("Invalid JSON");
+    let unfiltered_count = unfiltered["unchanged_count"].as_u64().unwrap_or(0);
+
+    // Fixture has multiple structs; filter should reduce the count
+    assert!(
+        unfiltered_count > unchanged_count,
+        "Filter should reduce struct count: unfiltered={} > filtered={}",
+        unfiltered_count,
+        unchanged_count
     );
 }
 
