@@ -38,6 +38,13 @@ inputs:
   min-padding:
     description: 'Show only structs with at least N bytes of padding'
     required: false
+  min-savings:
+    description: 'Show only structs with at least N bytes of potential savings (for suggest command)'
+    required: false
+  sort-by-savings:
+    description: 'Sort suggestions by savings amount (for suggest command)'
+    required: false
+    default: 'false'
   fail-on-regression:
     description: 'Fail if size or padding increased (for diff command)'
     required: false
@@ -79,6 +86,8 @@ runs:
         INPUT_SORT_BY: ${{ inputs.sort-by }}
         INPUT_TOP: ${{ inputs.top }}
         INPUT_MIN_PADDING: ${{ inputs.min-padding }}
+        INPUT_MIN_SAVINGS: ${{ inputs.min-savings }}
+        INPUT_SORT_BY_SAVINGS: ${{ inputs.sort-by-savings }}
         INPUT_FAIL_ON_REGRESSION: ${{ inputs.fail-on-regression }}
       run: |
         set +e
@@ -116,6 +125,19 @@ runs:
             ;;
           check)
             args+=(check "$INPUT_BINARY" --config "$INPUT_CONFIG")
+            ;;
+          suggest)
+            args+=(suggest "$INPUT_BINARY")
+            if [ -n "$INPUT_FILTER" ]; then
+              args+=(--filter "$INPUT_FILTER")
+            fi
+            args+=(--output "$INPUT_OUTPUT")
+            if [ -n "$INPUT_MIN_SAVINGS" ]; then
+              args+=(--min-savings "$INPUT_MIN_SAVINGS")
+            fi
+            if [ "$INPUT_SORT_BY_SAVINGS" = "true" ]; then
+              args+=(--sort-by-savings)
+            fi
             ;;
           *)
             echo "Error: unknown command '$INPUT_COMMAND'"

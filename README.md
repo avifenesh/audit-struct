@@ -126,6 +126,48 @@ budgets:
 
 Exit code 1 if any budget is exceeded (useful for CI).
 
+### suggest - Recommend optimal field ordering
+
+```bash
+# Suggest optimal field ordering for all structs
+layout-audit suggest ./target/debug/myapp
+
+# Filter to specific structs
+layout-audit suggest ./target/debug/myapp --filter Order
+
+# Only show structs with at least 8 bytes of potential savings
+layout-audit suggest ./target/debug/myapp --min-savings 8
+
+# Sort by savings (largest first)
+layout-audit suggest ./target/debug/myapp --sort-by-savings
+
+# JSON output
+layout-audit suggest ./target/debug/myapp -o json
+```
+
+Example output:
+```
+struct InternalPadding (16 bytes -> 12 bytes, saves 4 bytes / 25.0%)
+
+Current layout:
+| Offset | Size | Align | Type | Field |
+|--------|------|-------|------|-------|
+| 0      | 1    | 1     | char | a     |
+| 4      | 4    | 4     | int  | b     |
+| 8      | 1    | 1     | char | c     |
+| 12     | 4    | 4     | int  | d     |
+
+Suggested layout:
+| Offset | Size | Align | Type | Field |
+|--------|------|-------|------|-------|
+| 0      | 4    | 4     | int  | b     |
+| 4      | 4    | 4     | int  | d     |
+| 8      | 1    | 1     | char | a     |
+| 9      | 1    | 1     | char | c     |
+
+Reordering may affect serialization/FFI compatibility
+```
+
 ## Example Output
 
 ```
@@ -161,7 +203,7 @@ Use layout-audit directly in your workflows:
 | Input | Description | Default |
 |-------|-------------|---------|
 | `binary` | Path to binary file (required) | - |
-| `command` | `inspect`, `diff`, or `check` | `inspect` |
+| `command` | `inspect`, `diff`, `check`, or `suggest` | `inspect` |
 | `baseline` | Baseline binary for `diff` command | - |
 | `config` | Config file for `check` command | `.layout-audit.yaml` |
 | `filter` | Filter structs by name | - |
