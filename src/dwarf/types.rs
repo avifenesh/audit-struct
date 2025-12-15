@@ -81,11 +81,11 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
             gimli::DW_TAG_const_type
             | gimli::DW_TAG_volatile_type
             | gimli::DW_TAG_restrict_type => {
+                // All three tags are matched in the outer arm, so this is exhaustive.
                 let prefix = match tag {
                     gimli::DW_TAG_const_type => "const ",
                     gimli::DW_TAG_volatile_type => "volatile ",
-                    gimli::DW_TAG_restrict_type => "restrict ",
-                    _ => "",
+                    _ => "restrict ", // DW_TAG_restrict_type
                 };
                 if let Some(type_offset) = self.get_type_ref(&entry)? {
                     let (inner_name, size, inner_atomic) =
@@ -132,7 +132,11 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
 
                 let count = self.get_array_count(&entry)?;
                 let size = match (element_type.1, count) {
-                    (Some(elem_size), Some(c)) => Some(elem_size * c),
+                    // Use checked_mul to prevent overflow for very large arrays.
+                    // Fall back to DW_AT_byte_size if multiplication overflows.
+                    (Some(elem_size), Some(c)) => elem_size
+                        .checked_mul(c)
+                        .or_else(|| self.get_byte_size(&entry).ok().flatten()),
                     _ => self.get_byte_size(&entry)?,
                 };
 

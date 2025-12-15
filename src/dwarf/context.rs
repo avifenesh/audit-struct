@@ -342,8 +342,8 @@ impl<'a> DwarfContext<'a> {
 
     /// Resolve a file index to an actual file path using the .debug_line section.
     fn resolve_file_name(&self, unit: &Unit<DwarfSlice<'a>>, file_index: u64) -> Option<String> {
-        // Get the line program for this unit
-        let line_program = unit.line_program.clone()?;
+        // Get the line program for this unit (borrow instead of clone for efficiency)
+        let line_program = unit.line_program.as_ref()?;
 
         let header = line_program.header();
 
