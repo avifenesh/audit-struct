@@ -178,7 +178,8 @@ fn member_similarity_score(old: &StructLayout, new: &StructLayout) -> i64 {
     let size_delta = old.size.abs_diff(new.size).min(i64::MAX as u64) as i64;
     score = score.saturating_sub(size_delta);
 
-    let pad_delta = old.metrics.padding_bytes.abs_diff(new.metrics.padding_bytes).min(i64::MAX as u64) as i64;
+    let pad_delta =
+        old.metrics.padding_bytes.abs_diff(new.metrics.padding_bytes).min(i64::MAX as u64) as i64;
     score = score.saturating_sub(pad_delta / 2);
 
     // Member-name overlap drives matching for same-name duplicates.
@@ -263,7 +264,8 @@ fn match_structs<'a>(
             }
         }
 
-        scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)).then_with(|| a.2.cmp(&b.2)));
+        scored
+            .sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)).then_with(|| a.2.cmp(&b.2)));
 
         // Require a positive score to avoid pairing completely unrelated duplicates.
         for (score, i, j) in scored {
@@ -307,7 +309,8 @@ fn kind_rank(kind: &MemberChangeKind) -> u8 {
 
 fn diff_struct(old: &StructLayout, new: &StructLayout) -> Option<StructChange> {
     // Use saturating signed subtraction to handle large u64 values safely.
-    let size_delta = (new.size as i128 - old.size as i128).clamp(i64::MIN as i128, i64::MAX as i128) as i64;
+    let size_delta =
+        (new.size as i128 - old.size as i128).clamp(i64::MIN as i128, i64::MAX as i128) as i64;
     let padding_delta = (new.metrics.padding_bytes as i128 - old.metrics.padding_bytes as i128)
         .clamp(i64::MIN as i128, i64::MAX as i128) as i64;
 

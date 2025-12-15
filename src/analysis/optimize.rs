@@ -74,6 +74,8 @@ struct SortableUnit {
 
 /// Group bitfield members that share storage units.
 /// Returns indices of members belonging to each bitfield group.
+/// Note: Members in bitfield groups may still be filtered out during optimization
+/// if they have missing size/offset. Callers must track converted indices separately.
 fn find_bitfield_groups(members: &[MemberLayout]) -> Vec<Vec<usize>> {
     let mut groups: Vec<Vec<usize>> = Vec::new();
     let mut current_group: Vec<usize> = Vec::new();
@@ -169,19 +171,26 @@ pub fn optimize_layout(layout: &StructLayout, max_align: u64) -> OptimizedLayout
     let mut units: Vec<SortableUnit> = Vec::new();
     let mut processed_indices: HashSet<usize> = HashSet::new();
 
+    // Track which bitfield indices were successfully converted to OptimizedMember.
+    // This allows us to verify no bitfield member is silently lost.
+    let mut converted_bitfield_indices: HashSet<usize> = HashSet::new();
+
     // Add bitfield groups as units
     for group in &bitfield_groups {
         if group.is_empty() {
             continue;
         }
 
+        // Track which indices in this group were successfully converted
+        let mut group_converted: Vec<usize> = Vec::new();
         let group_members: Vec<OptimizedMember> = group
             .iter()
             .filter_map(|&idx| {
-                layout
-                    .members
-                    .get(idx)
-                    .and_then(|lm| original_members.iter().find(|m| m.name == lm.name).cloned())
+                layout.members.get(idx).and_then(|lm| {
+                    original_members.iter().find(|m| m.name == lm.name).cloned().inspect(|_| {
+                        group_converted.push(idx);
+                    })
+                })
             })
             .collect();
 
@@ -196,12 +205,33 @@ pub fn optimize_layout(layout: &StructLayout, max_align: u64) -> OptimizedLayout
         };
         let alignment = group_members.iter().map(|m| m.alignment).max().unwrap_or(1);
 
-        for idx in group {
+        // Mark only successfully converted indices as processed
+        for idx in &group_converted {
             processed_indices.insert(*idx);
+            converted_bitfield_indices.insert(*idx);
         }
 
         units.push(SortableUnit { members: group_members, total_size, alignment });
     }
+
+    // Verify all bitfield indices are accounted for (either converted or in skipped_members).
+    // This defensive check prevents silent data loss from edge cases.
+    // Collect names to add first to avoid borrow conflicts.
+    let missing_bitfield_names: Vec<String> = {
+        let skipped_names: HashSet<&str> = skipped_members.iter().map(|s| s.as_str()).collect();
+        bitfield_indices
+            .iter()
+            .filter(|&&idx| !converted_bitfield_indices.contains(&idx))
+            .filter_map(|&idx| layout.members.get(idx))
+            .filter(|member| {
+                // Check if already in skipped_members (may have "(zero-size)" suffix)
+                !skipped_names.contains(member.name.as_str())
+                    && !skipped_members.iter().any(|s| s.starts_with(&member.name))
+            })
+            .map(|member| format!("{} (bitfield, missing info)", member.name))
+            .collect()
+    };
+    skipped_members.extend(missing_bitfield_names);
 
     // Add non-bitfield members as single-member units
     for (idx, member) in layout.members.iter().enumerate() {
@@ -370,5 +400,36 @@ mod tests {
         let result = optimize_layout(&layout, 0);
         assert!(result.struct_alignment >= 1);
         assert!(result.optimized_size > 0);
+    }
+
+    #[test]
+    fn test_bitfield_with_missing_metadata_not_lost() {
+        // Test that bitfield members with missing metadata are tracked in skipped_members
+        let mut layout = StructLayout::new("Test".to_string(), 8, Some(4));
+
+        // Create a bitfield member with valid info
+        let mut valid_bitfield =
+            MemberLayout::new("flags".to_string(), "unsigned int".to_string(), Some(0), Some(4));
+        valid_bitfield.bit_size = Some(3);
+        valid_bitfield.bit_offset = Some(0);
+
+        // Create a bitfield member with missing metadata (same offset = same storage unit)
+        let mut missing_bitfield =
+            MemberLayout::new("status".to_string(), "unsigned int".to_string(), Some(0), None);
+        missing_bitfield.bit_size = Some(2);
+
+        layout.members = vec![valid_bitfield, missing_bitfield];
+
+        let result = optimize_layout(&layout, 8);
+
+        // The valid bitfield should be optimized
+        assert!(result.optimized_members.iter().any(|m| m.name == "flags"));
+
+        // The missing bitfield should be in skipped_members (not silently lost)
+        assert!(
+            result.skipped_members.iter().any(|s| s.contains("status")),
+            "Bitfield 'status' with missing metadata should be in skipped_members, got: {:?}",
+            result.skipped_members
+        );
     }
 }
