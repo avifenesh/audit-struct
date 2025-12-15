@@ -1,0 +1,146 @@
+name: Test Action
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'action.yml'
+      - '.github/workflows/test-action.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'action.yml'
+      - '.github/workflows/test-action.yml'
+  workflow_dispatch:
+
+jobs:
+  test-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Compile test fixture
+        run: |
+          mkdir -p tests/fixtures/bin
+          gcc -g -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c
+
+      # Test inspect command
+      - name: Test inspect command
+        id: inspect
+        uses: ./
+        with:
+          binary: tests/fixtures/bin/test_simple
+          command: inspect
+          filter: Padding
+          sort-by: padding
+          top: '5'
+
+      - name: Verify inspect output
+        env:
+          REPORT: ${{ steps.inspect.outputs.report }}
+        run: |
+          echo "Inspect output:"
+          echo "$REPORT"
+          if [[ -z "$REPORT" ]]; then
+            echo "ERROR: No output from inspect command"
+            exit 1
+          fi
+
+      # Test inspect with JSON output
+      - name: Test JSON output
+        id: json
+        uses: ./
+        with:
+          binary: tests/fixtures/bin/test_simple
+          command: inspect
+          output: json
+
+      - name: Verify JSON output
+        env:
+          REPORT: ${{ steps.json.outputs.report }}
+        run: |
+          echo "$REPORT" | jq -e '.structs' > /dev/null
+          echo "JSON output valid"
+
+      # Test diff command
+      - name: Test diff command
+        id: diff
+        uses: ./
+        with:
+          binary: tests/fixtures/bin/test_simple
+          baseline: tests/fixtures/bin/test_simple
+          command: diff
+
+      - name: Verify diff output
+        env:
+          REPORT: ${{ steps.diff.outputs.report }}
+        run: |
+          echo "Diff output:"
+          echo "$REPORT"
+
+      # Test check command
+      - name: Create budget config
+        run: |
+          cat > .layout-audit.yaml << 'EOF'
+          budgets:
+            InternalPadding:
+              max_size: 64
+              max_padding_percent: 50.0
+          EOF
+
+      - name: Test check command
+        uses: ./
+        with:
+          binary: tests/fixtures/bin/test_simple
+          command: check
+          config: .layout-audit.yaml
+
+      # Test min-padding filter
+      - name: Test min-padding filter
+        uses: ./
+        with:
+          binary: tests/fixtures/bin/test_simple
+          command: inspect
+          min-padding: '1'
+
+  test-action-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Compile test fixture
+        run: |
+          mkdir -p tests/fixtures/bin
+          clang -g -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c
+          dsymutil tests/fixtures/bin/test_simple
+
+      - name: Test action on macOS
+        uses: ./
+        with:
+          binary: tests/fixtures/bin/test_simple.dSYM/Contents/Resources/DWARF/test_simple
+          command: inspect
+          filter: Padding
+
+  test-action-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Compile test fixture
+        shell: bash
+        run: |
+          mkdir -p tests/fixtures/bin
+          gcc -g -o tests/fixtures/bin/test_simple.exe tests/fixtures/test_simple.c
+
+      - name: Test action on Windows
+        uses: ./
+        with:
+          binary: tests/fixtures/bin/test_simple.exe
+          command: inspect
+          filter: Padding
