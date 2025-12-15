@@ -101,16 +101,28 @@ Budget configuration (`.layout-audit.yaml`):
 
 ```yaml
 budgets:
-  # Enforce constraints on specific structs
+  # Exact match - highest priority
   Order:
     max_size: 64           # Maximum total size in bytes
     max_padding: 8         # Maximum padding bytes
     max_padding_percent: 15.0  # Maximum padding percentage
 
-  CriticalPath:
-    max_size: 128
-    max_padding_percent: 10.0
+  # Glob patterns - matched in declaration order
+  "hot_path::*":           # All structs in hot_path module
+    max_size: 64
+    max_padding_percent: 5.0
+
+  "*Padding":              # Structs ending with "Padding"
+    max_padding: 4
+
+  "*":                     # Catch-all for remaining structs
+    max_size: 256
 ```
+
+**Pattern matching rules:**
+- Exact names take priority over glob patterns
+- First matching glob wins (declaration order matters)
+- Supports `*` (any chars), `?` (single char), `[...]` (char class)
 
 Exit code 1 if any budget is exceeded (useful for CI).
 
@@ -281,17 +293,21 @@ Budget configuration (`.layout-audit.yaml`):
 
 ```yaml
 budgets:
+  # Exact match - highest priority
   Order:
     max_size: 64
     max_padding: 8
     max_padding_percent: 15.0
 
-  CriticalPath:
-    max_size: 128
-    max_padding_percent: 10.0
+  # Glob patterns - matched in declaration order
+  "hot_path::*":           # All structs in hot_path module
+    max_size: 64
+
+  "*":                     # Catch-all
+    max_size: 256
 ```
 
-Exit code 1 if any budget is exceeded
+Exit code 1 if any budget is exceeded. See [check command](#check---enforce-budget-constraints) for pattern matching rules.
 
 ## Requirements
 

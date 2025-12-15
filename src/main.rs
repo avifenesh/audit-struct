@@ -257,7 +257,8 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
     if !config_path.exists() {
         bail!(
             "Config file not found: {}\n\nCreate a .layout-audit.yaml with budget constraints:\n\n\
-            budgets:\n  MyStruct:\n    max_size: 64\n    max_padding: 8\n    max_padding_percent: 10.0",
+            budgets:\n  MyStruct:\n    max_size: 64\n    max_padding: 8\n    max_padding_percent: 10.0\n\n\
+            Glob patterns are supported:\n  \"*Padding\":\n    max_padding_percent: 15.0",
             config_path.display()
         );
     }
@@ -268,20 +269,19 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
     let config: Config = serde_yaml::from_str(&config_str)
         .with_context(|| format!("Failed to parse config: {}", config_path.display()))?;
 
-    for (name, budget) in &config.budgets {
-        budget.validate(name)?;
+    if config.budgets.is_empty() {
+        eprintln!("Warning: No budget constraints defined in config file");
+        return Ok(());
     }
+
+    // Compile patterns (validates and separates exact matches from globs)
+    let compiled = config.compile()?;
 
     let binary = BinaryData::load(binary_path)
         .with_context(|| format!("Failed to load binary: {}", binary_path.display()))?;
 
     let loaded = binary.load_dwarf().context("Failed to load DWARF debug info")?;
     let dwarf = DwarfContext::new(&loaded);
-
-    if config.budgets.is_empty() {
-        eprintln!("Warning: No budget constraints defined in config file");
-        return Ok(());
-    }
 
     let mut layouts = dwarf.find_structs(None)?;
     for layout in &mut layouts {
@@ -291,19 +291,25 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
     let layout_names: std::collections::HashSet<&str> =
         layouts.iter().map(|l| l.name.as_str()).collect();
 
-    for budget_name in config.budgets.keys() {
-        if !layout_names.contains(budget_name.as_str()) {
-            eprintln!(
-                "Warning: Budget defined for '{}' but struct not found in binary",
-                budget_name
-            );
+    // Warn about unmatched exact budget names
+    for name in compiled.exact.keys() {
+        if !layout_names.contains(name.as_str()) {
+            eprintln!("Warning: Budget defined for '{}' but struct not found in binary", name);
         }
     }
+
+    // Track which glob patterns matched at least one struct
+    let mut pattern_matched = vec![false; compiled.patterns.len()];
 
     let mut violations = Vec::new();
 
     for layout in &layouts {
-        if let Some(budget) = config.budgets.get(&layout.name) {
+        if let Some((budget, pattern_idx)) = compiled.find_budget(&layout.name) {
+            // Mark glob pattern as matched
+            if let Some(idx) = pattern_idx {
+                pattern_matched[idx] = true;
+            }
+
             if let Some(max_size) = budget.max_size
                 && layout.size > max_size
             {
@@ -351,6 +357,16 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
         }
     }
 
+    // Warn about glob patterns that matched nothing
+    for (i, matched) in pattern_matched.iter().enumerate() {
+        if !*matched {
+            eprintln!(
+                "Warning: Pattern '{}' did not match any structs",
+                compiled.patterns[i].original_pattern
+            );
+        }
+    }
+
     if violations.is_empty() {
         println!("All structs within budget constraints");
         Ok(())
@@ -367,10 +383,10 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
 #[derive(serde::Deserialize)]
 struct Config {
     #[serde(default)]
-    budgets: std::collections::HashMap<String, Budget>,
+    budgets: indexmap::IndexMap<String, Budget>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 struct Budget {
     max_size: Option<u64>,
     max_padding: Option<u64>,
@@ -405,5 +421,79 @@ impl Budget {
             bail!("Invalid budget for '{}': max_size must be greater than 0", name);
         }
         Ok(())
+    }
+}
+
+/// Check if a pattern string contains glob metacharacters
+fn is_glob_pattern(s: &str) -> bool {
+    s.contains('*') || s.contains('?') || s.contains('[') || s.contains('{')
+}
+
+/// Compiled budget patterns for efficient matching
+struct CompiledBudgets {
+    /// Exact name matches (O(1) lookup)
+    exact: std::collections::HashMap<String, Budget>,
+    /// Glob patterns in declaration order
+    patterns: Vec<CompiledPattern>,
+}
+
+struct CompiledPattern {
+    glob: globset::GlobMatcher,
+    budget: Budget,
+    original_pattern: String,
+}
+
+impl Config {
+    /// Compile budget patterns for efficient matching.
+    /// Separates exact matches from glob patterns.
+    fn compile(&self) -> Result<CompiledBudgets> {
+        use globset::GlobBuilder;
+
+        let mut exact = std::collections::HashMap::new();
+        let mut patterns = Vec::new();
+
+        for (name, budget) in &self.budgets {
+            if name.is_empty() {
+                bail!("Empty budget pattern name is not allowed");
+            }
+
+            budget.validate(name)?;
+
+            if is_glob_pattern(name) {
+                let glob = GlobBuilder::new(name)
+                    .literal_separator(false) // * matches ::
+                    .build()
+                    .with_context(|| format!("Invalid glob pattern: '{}'", name))?
+                    .compile_matcher();
+
+                patterns.push(CompiledPattern {
+                    glob,
+                    budget: budget.clone(),
+                    original_pattern: name.clone(),
+                });
+            } else {
+                exact.insert(name.clone(), budget.clone());
+            }
+        }
+
+        Ok(CompiledBudgets { exact, patterns })
+    }
+}
+
+impl CompiledBudgets {
+    /// Find the budget for a struct name.
+    /// Returns (budget, pattern_index) where pattern_index is Some if matched by a glob.
+    fn find_budget(&self, struct_name: &str) -> Option<(&Budget, Option<usize>)> {
+        // Exact match takes priority
+        if let Some(budget) = self.exact.get(struct_name) {
+            return Some((budget, None));
+        }
+        // First matching glob wins
+        for (i, pattern) in self.patterns.iter().enumerate() {
+            if pattern.glob.is_match(struct_name) {
+                return Some((&pattern.budget, Some(i)));
+            }
+        }
+        None
     }
 }

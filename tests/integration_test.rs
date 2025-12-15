@@ -840,6 +840,218 @@ budgets:
 }
 
 // ============================================================================
+// Glob pattern tests
+// ============================================================================
+
+#[test]
+fn test_check_glob_pattern_wildcard() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // "*Padding" should match NoPadding, InternalPadding, TailPadding
+    // Setting max_size: 4 should fail all three (NoPadding=12, InternalPadding=16, TailPadding=8)
+    let config = create_temp_config(
+        r#"
+budgets:
+  "*Padding":
+    max_size: 4
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Glob should match *Padding structs and fail budget");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Should mention at least one of the matched structs
+    assert!(
+        stderr.contains("NoPadding")
+            || stderr.contains("InternalPadding")
+            || stderr.contains("TailPadding"),
+        "Should report violation for at least one *Padding struct: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_check_glob_exact_takes_priority() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Test that exact matches take priority over glob patterns.
+    // NoPadding (12B), InternalPadding (16B), TailPadding (8B)
+    // Set glob "*Padding" to max_size: 10, which would fail NoPadding (12B) and InternalPadding (16B)
+    // Set exact "NoPadding" to max_size: 15, which passes NoPadding (12B)
+    // Set exact "InternalPadding" to max_size: 20, which passes InternalPadding (16B)
+    // If exact takes priority, all *Padding structs pass; otherwise NoPadding/InternalPadding fail
+    let config = create_temp_config(
+        r#"
+budgets:
+  "*Padding":
+    max_size: 10
+  NoPadding:
+    max_size: 15
+  InternalPadding:
+    max_size: 20
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    // All structs should pass if exact matches take priority over glob
+    assert!(
+        output.status.success(),
+        "Exact match should take priority over glob: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_check_glob_first_match_wins() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Test that first matching glob wins (declaration order).
+    // InternalPadding (16B) matches both "*Padding" and "Internal*"
+    // First glob "*Padding" max_size: 20 passes InternalPadding (16B)
+    // Second glob "Internal*" max_size: 4 would fail InternalPadding (16B)
+    // If first match wins, InternalPadding passes; otherwise it fails
+    // NoPadding (12B) and TailPadding (8B) also match "*Padding" and pass
+    let config = create_temp_config(
+        r#"
+budgets:
+  "*Padding":
+    max_size: 20
+  "Internal*":
+    max_size: 4
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    // All *Padding structs should pass using first matching glob
+    assert!(
+        output.status.success(),
+        "First matching glob should win: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_check_glob_catch_all() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // "*" should match everything - set max_size: 4 to fail all structs
+    let config = create_temp_config(
+        r#"
+budgets:
+  "*":
+    max_size: 4
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Catch-all glob should match and fail all structs");
+}
+
+#[test]
+fn test_check_glob_invalid_pattern() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // "[invalid" is an unclosed bracket - invalid glob syntax
+    let config = create_temp_config(
+        r#"
+budgets:
+  "[invalid":
+    max_size: 100
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Invalid glob pattern should cause error");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.to_lowercase().contains("invalid")
+            || stderr.to_lowercase().contains("pattern")
+            || stderr.to_lowercase().contains("glob"),
+        "Should mention invalid pattern error: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_check_glob_empty_pattern() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Empty pattern "" should fail validation
+    let config = create_temp_config(
+        r#"
+budgets:
+  "":
+    max_size: 100
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Empty pattern should cause error");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.to_lowercase().contains("empty")
+            || stderr.to_lowercase().contains("pattern")
+            || stderr.to_lowercase().contains("invalid"),
+        "Should mention empty/invalid pattern error: {}",
+        stderr
+    );
+}
+
+// ============================================================================
 // Error path tests
 // ============================================================================
 
