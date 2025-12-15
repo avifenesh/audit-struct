@@ -1,6 +1,6 @@
 use crate::types::StructLayout;
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Penalty for matching structs with mismatched source locations.
 /// Large enough to dominate all other scoring factors, preventing cross-location matching.
@@ -85,16 +85,12 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
         new_by_name.entry(s.name.clone()).or_default().push(s);
     }
 
-    // Iterate names in a deterministic order.
-    let mut all_names: BTreeMap<String, ()> = BTreeMap::new();
-    for name in old_by_name.keys() {
-        all_names.insert(name.clone(), ());
-    }
-    for name in new_by_name.keys() {
-        all_names.insert(name.clone(), ());
-    }
+    // Iterate names in a deterministic order using BTreeSet for uniqueness.
+    let all_names: BTreeSet<&str> =
+        old_by_name.keys().chain(new_by_name.keys()).map(String::as_str).collect();
 
-    for (name, _) in all_names {
+    for name in all_names {
+        let name = name.to_string(); // Convert to owned for lookups and output
         let old_group = old_by_name.get(&name).map(Vec::as_slice).unwrap_or(&[]);
         let new_group = new_by_name.get(&name).map(Vec::as_slice).unwrap_or(&[]);
 

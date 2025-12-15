@@ -240,11 +240,12 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
                 if let Some(count) = self.extract_count_attr(child_entry, gimli::DW_AT_count)? {
                     return Ok(Some(count));
                 }
-                // Fall back to DW_AT_upper_bound (0-indexed, so add 1)
+                // Fall back to DW_AT_upper_bound (0-indexed, so add 1).
+                // Use checked_add to handle corrupted DWARF with upper == u64::MAX.
                 if let Some(upper) =
                     self.extract_count_attr(child_entry, gimli::DW_AT_upper_bound)?
                 {
-                    return Ok(Some(upper + 1));
+                    return Ok(upper.checked_add(1));
                 }
             }
         }
