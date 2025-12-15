@@ -192,7 +192,7 @@ Summary: 10 useful bytes, 6 padding bytes (37.5%), cache density: 15.6%
 Use layout-audit directly in your workflows:
 
 ```yaml
-- uses: avifenesh/layout-audit@v0.3.1
+- uses: avifenesh/layout-audit@v0.3.2
   with:
     binary: ./target/debug/myapp
     command: inspect
@@ -239,7 +239,7 @@ jobs:
         run: cargo build
 
       - name: Analyze memory layouts
-        uses: avifenesh/layout-audit@v0.3.1
+        uses: avifenesh/layout-audit@v0.3.2
         with:
           binary: ./target/debug/myapp
           command: inspect
@@ -251,7 +251,7 @@ jobs:
 
 ```yaml
       - name: Check struct budgets
-        uses: avifenesh/layout-audit@v0.3.1
+        uses: avifenesh/layout-audit@v0.3.2
         with:
           binary: ./target/debug/myapp
           command: check
@@ -262,7 +262,7 @@ jobs:
 
 ```yaml
       - name: Compare layouts
-        uses: avifenesh/layout-audit@v0.3.1
+        uses: avifenesh/layout-audit@v0.3.2
         with:
           binary: ./target/debug/myapp
           baseline: ./target-baseline/debug/myapp
@@ -275,7 +275,7 @@ jobs:
 ```yaml
       - name: Analyze layouts
         id: layout
-        uses: avifenesh/layout-audit@v0.3.1
+        uses: avifenesh/layout-audit@v0.3.2
         with:
           binary: ./target/debug/myapp
           output: json
