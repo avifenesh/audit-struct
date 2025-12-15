@@ -3,6 +3,8 @@ use crate::loader::DwarfSlice;
 use gimli::{AttributeValue, Dwarf, Unit, UnitOffset};
 use std::collections::HashMap;
 
+use super::read_u64_from_attr;
+
 /// Result of resolving a type: (type_name, size, is_atomic)
 pub type TypeInfo = (String, Option<u64>, bool);
 
@@ -189,14 +191,8 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
         &self,
         entry: &gimli::DebuggingInformationEntry<DwarfSlice<'a>>,
     ) -> Result<Option<u64>> {
-        match entry.attr_value(gimli::DW_AT_byte_size) {
-            Ok(Some(AttributeValue::Udata(s))) => Ok(Some(s)),
-            Ok(Some(AttributeValue::Data1(s))) => Ok(Some(s as u64)),
-            Ok(Some(AttributeValue::Data2(s))) => Ok(Some(s as u64)),
-            Ok(Some(AttributeValue::Data4(s))) => Ok(Some(s as u64)),
-            Ok(Some(AttributeValue::Data8(s))) => Ok(Some(s)),
-            _ => Ok(None),
-        }
+        // Use shared helper for consistent attribute extraction.
+        Ok(read_u64_from_attr(entry.attr_value(gimli::DW_AT_byte_size).ok().flatten()))
     }
 
     fn get_type_ref(
@@ -261,14 +257,7 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
         entry: &gimli::DebuggingInformationEntry<DwarfSlice<'a>>,
         attr: gimli::DwAt,
     ) -> Result<Option<u64>> {
-        match entry.attr_value(attr) {
-            Ok(Some(AttributeValue::Udata(v))) => Ok(Some(v)),
-            Ok(Some(AttributeValue::Data1(v))) => Ok(Some(v as u64)),
-            Ok(Some(AttributeValue::Data2(v))) => Ok(Some(v as u64)),
-            Ok(Some(AttributeValue::Data4(v))) => Ok(Some(v as u64)),
-            Ok(Some(AttributeValue::Data8(v))) => Ok(Some(v)),
-            Ok(Some(AttributeValue::Sdata(v))) if v >= 0 => Ok(Some(v as u64)),
-            _ => Ok(None),
-        }
+        // Use shared helper for consistent attribute extraction.
+        Ok(read_u64_from_attr(entry.attr_value(attr).ok().flatten()))
     }
 }
