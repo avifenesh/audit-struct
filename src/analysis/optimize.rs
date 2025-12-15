@@ -119,11 +119,13 @@ fn find_bitfield_groups(members: &[MemberLayout]) -> Vec<Vec<usize>> {
 /// Uses greedy bin-packing: sort by alignment desc, then size desc.
 pub fn optimize_layout(layout: &StructLayout, max_align: u64) -> OptimizedLayout {
     let max_align = max_align.max(1);
-    // If struct alignment is known, use it; otherwise infer from member alignments
+    // If struct alignment is known, use it; otherwise infer from member alignments.
+    // Exclude ZSTs (size=0) since they don't affect struct alignment.
     let inferred_alignment = layout
         .members
         .iter()
         .filter_map(|m| m.size)
+        .filter(|&s| s > 0)
         .map(|s| infer_alignment(s, max_align))
         .max()
         .unwrap_or(1);

@@ -120,7 +120,8 @@ impl MemberLayout {
 
     pub fn end_offset(&self) -> Option<u64> {
         match (self.offset, self.size) {
-            (Some(off), Some(sz)) => Some(off + sz),
+            // Use checked_add to prevent overflow for malformed DWARF data.
+            (Some(off), Some(sz)) => off.checked_add(sz),
             _ => None,
         }
     }

@@ -180,7 +180,7 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
                     .dwarf
                     .attr_string(self.unit, attr)
                     .map_err(|e| Error::Dwarf(format!("Failed to read type name: {}", e)))?;
-                Ok(Some(name.to_string_lossy().to_string()))
+                Ok(Some(name.to_string_lossy().into_owned()))
             }
             Ok(None) => Ok(None),
             Err(e) => Err(Error::Dwarf(format!("Failed to read name attr: {}", e))),
