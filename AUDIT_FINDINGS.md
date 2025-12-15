@@ -18,6 +18,7 @@ This file captures the issues found during a deep review + the changes made to f
 | 11 | types.rs: checked_sub for cross-unit refs | e5e8b99 |
 | 12 | optimize.rs: bitfield tracking, no silent data loss | 6d1d017 |
 | 13 | context.rs: consolidate attribute parsing | e88d7f3 |
+| 14-16 | Fifth pass: overflow, clone, code consolidation | 85214cf, 688b9bb |
 
 ## Environment and validation
 
@@ -447,6 +448,70 @@ Code: `src/analysis/optimize.rs`
 - Consistent handling of all AttributeValue forms (Sdata, Data1-8, Udata, FileIndex)
 
 Code: `src/dwarf/context.rs`
+
+### Validation
+
+All 82 tests pass. `cargo clippy --all-targets -- -D warnings` is clean.
+
+---
+
+## Code Review Findings (Dec 15, 2025 - Fifth Pass)
+
+Additional issues found during continued code review.
+
+## Finding 14: types.rs array size overflow
+
+### Issue identified
+
+Array size calculation `elem_size * count` could overflow for very large arrays, wrapping to incorrect values.
+
+### Fix
+
+- Use `checked_mul` for array size calculation
+- Fall back to `DW_AT_byte_size` if multiplication overflows
+
+Code: `src/dwarf/types.rs`
+
+## Finding 15: types.rs unreachable match arm
+
+### Issue identified
+
+Match arm for type qualifiers (const/volatile/restrict) had `_ => ""` fallback that was unreachable since all three tags were explicitly matched.
+
+### Fix
+
+- Changed to use `_` for the last variant with explicit comment
+- Clearer code with no dead branches
+
+Code: `src/dwarf/types.rs`
+
+## Finding 16: context.rs unnecessary clone
+
+### Issue identified
+
+`line_program.clone()` created an unnecessary copy of `IncompleteLineProgram` when only `header()` (a `&self` method) was called.
+
+### Fix
+
+- Changed to `as_ref()` for borrow instead of clone
+- Minor performance improvement for source location resolution
+
+Code: `src/dwarf/context.rs`
+
+## Finding 17: Code duplication across DWARF modules
+
+### Issue identified
+
+`read_u64_from_attr` pattern was duplicated in context.rs (explicit function) and types.rs (`get_byte_size`, `extract_count_attr`). The ~20 lines of attribute matching code was repeated multiple times.
+
+### Fix
+
+- Moved `read_u64_from_attr` to `dwarf/mod.rs` as `pub(crate)` function
+- Updated context.rs to import from parent module
+- Simplified types.rs functions to use shared helper
+- Reduced code duplication and ensured consistent attribute handling
+
+Code: `src/dwarf/mod.rs`, `src/dwarf/context.rs`, `src/dwarf/types.rs`
 
 ### Validation
 
