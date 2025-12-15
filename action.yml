@@ -130,10 +130,12 @@ runs:
         echo "$OUTPUT"
 
         # Set output for use in subsequent steps
+        # Use unique delimiter to prevent output smuggling if OUTPUT contains "EOF"
+        DELIMITER="EOF_${RANDOM}_${RANDOM}"
         {
-          echo "report<<EOF"
+          echo "report<<${DELIMITER}"
           echo "$OUTPUT"
-          echo "EOF"
+          echo "${DELIMITER}"
         } >> "$GITHUB_OUTPUT"
 
         exit $EXIT_CODE

@@ -1,30 +1,47 @@
 use layout_audit::{BinaryData, DwarfContext, analyze_layout};
 
-/// Get the path to the test fixture binary.
-/// On macOS, debug info is in a separate dSYM bundle.
-/// On Windows, binaries have .exe extension.
-fn get_fixture_path() -> Option<std::path::PathBuf> {
+/// Check if fixture tests should be skipped (for local dev without compiled fixtures).
+/// Set SKIP_FIXTURE_TESTS=1 to skip. CI should never set this.
+fn should_skip_fixture_tests() -> bool {
+    std::env::var("SKIP_FIXTURE_TESTS").is_ok_and(|v| v == "1")
+}
+
+/// Get the path to the test fixture binary, or None if not found.
+fn find_fixture_path(name: &str) -> Option<std::path::PathBuf> {
     // Try dSYM path first (macOS)
-    let dsym_path = std::path::Path::new(
-        "tests/fixtures/bin/test_simple.dSYM/Contents/Resources/DWARF/test_simple",
-    );
+    let dsym_path = std::path::Path::new("tests/fixtures/bin")
+        .join(format!("{}.dSYM/Contents/Resources/DWARF/{}", name, name));
     if dsym_path.exists() {
-        return Some(dsym_path.to_path_buf());
+        return Some(dsym_path);
     }
 
     // Try Windows PE binary with .exe extension
-    let exe_path = std::path::Path::new("tests/fixtures/bin/test_simple.exe");
+    let exe_path = std::path::Path::new("tests/fixtures/bin").join(format!("{}.exe", name));
     if exe_path.exists() {
-        return Some(exe_path.to_path_buf());
+        return Some(exe_path);
     }
 
     // Fall back to direct binary (Linux with embedded debug info)
-    let direct_path = std::path::Path::new("tests/fixtures/bin/test_simple");
+    let direct_path = std::path::Path::new("tests/fixtures/bin").join(name);
     if direct_path.exists() {
-        return Some(direct_path.to_path_buf());
+        return Some(direct_path);
     }
 
     None
+}
+
+/// Get fixture path, panicking if not found (unless SKIP_FIXTURE_TESTS=1).
+/// Returns None only when SKIP_FIXTURE_TESTS=1 and fixture is missing.
+fn get_fixture_path() -> Option<std::path::PathBuf> {
+    match find_fixture_path("test_simple") {
+        Some(p) => Some(p),
+        None if should_skip_fixture_tests() => None,
+        None => panic!(
+            "Test fixture 'test_simple' not found. \
+             Run: gcc -g -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c\n\
+             Or set SKIP_FIXTURE_TESTS=1 to skip fixture tests in local dev."
+        ),
+    }
 }
 
 #[test]
@@ -649,24 +666,15 @@ fn test_diff_filter() {
 
 /// Get path to the modified test fixture for diff testing
 fn get_modified_fixture_path() -> Option<std::path::PathBuf> {
-    let dsym_path = std::path::Path::new(
-        "tests/fixtures/bin/test_modified.dSYM/Contents/Resources/DWARF/test_modified",
-    );
-    if dsym_path.exists() {
-        return Some(dsym_path.to_path_buf());
+    match find_fixture_path("test_modified") {
+        Some(p) => Some(p),
+        None if should_skip_fixture_tests() => None,
+        None => panic!(
+            "Test fixture 'test_modified' not found. \
+             Run: gcc -g -o tests/fixtures/bin/test_modified tests/fixtures/test_modified.c\n\
+             Or set SKIP_FIXTURE_TESTS=1 to skip fixture tests in local dev."
+        ),
     }
-
-    let exe_path = std::path::Path::new("tests/fixtures/bin/test_modified.exe");
-    if exe_path.exists() {
-        return Some(exe_path.to_path_buf());
-    }
-
-    let direct_path = std::path::Path::new("tests/fixtures/bin/test_modified");
-    if direct_path.exists() {
-        return Some(direct_path.to_path_buf());
-    }
-
-    None
 }
 
 #[test]

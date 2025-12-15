@@ -163,7 +163,8 @@ fn leak_section_name(name: &str) -> &'static str {
     static CACHE: OnceLock<std::sync::Mutex<HashMap<String, &'static str>>> = OnceLock::new();
 
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
-    let mut guard = cache.lock().unwrap();
+    // Recover from poisoned lock - cache is just an optimization, safe to continue
+    let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
 
     if let Some(&cached) = guard.get(name) {
         return cached;
