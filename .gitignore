@@ -24,3 +24,6 @@ tests/fixtures/multifile/trading_system
 tests/fixtures/multifile/trading_system.dSYM/
 CLAUDE.md
 PROMOTION.md
+
+# Claude Code local state
+.claude/*.local.md
