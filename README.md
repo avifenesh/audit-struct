@@ -1,8 +1,24 @@
 # layout-audit
 
-Analyze binary memory layouts to detect padding inefficiencies.
+[![Crates.io](https://img.shields.io/crates/v/layout-audit.svg)](https://crates.io/crates/layout-audit)
+[![Downloads](https://img.shields.io/crates/d/layout-audit.svg)](https://crates.io/crates/layout-audit)
+[![CI](https://github.com/avifenesh/layout-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/avifenesh/layout-audit/actions/workflows/ci.yml)
+[![License](https://img.shields.io/crates/l/layout-audit.svg)](https://github.com/avifenesh/layout-audit#license)
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-layout--audit-blue?logo=github)](https://github.com/marketplace/actions/layout-audit)
+
+**Detect memory layout inefficiencies in your C/C++/Rust binaries.**
 
 `layout-audit` parses DWARF debugging information to visualize the physical layout of data structures, detect padding holes, and analyze cache line efficiency.
+
+## Why?
+
+Every byte of padding costs you:
+- **HFT/Trading**: Cache misses add microseconds of latency
+- **Embedded/IoT**: Wasted RAM on memory-constrained devices
+- **Gaming**: Poor cache utilization hurts frame times
+- **Cloud**: Larger memory footprint = higher costs
+
+Catch layout regressions in CI before they ship.
 
 ## Installation
 
