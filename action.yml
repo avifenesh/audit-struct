@@ -11,7 +11,7 @@ inputs:
     description: 'Path to the binary file to analyze'
     required: true
   command:
-    description: 'Command to run: inspect, diff, or check'
+    description: 'Command to run: inspect, diff, check, or suggest'
     required: false
     default: 'inspect'
   baseline:
