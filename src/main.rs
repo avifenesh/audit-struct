@@ -370,7 +370,8 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
             }
             if let Some(max_fs) = budget.max_false_sharing_warnings {
                 let fs = analyze_false_sharing(layout, cache_line_size);
-                let warning_count = fs.warnings.len() as u32;
+                // Clamp to u32::MAX to prevent truncation on 64-bit platforms
+                let warning_count = fs.warnings.len().min(u32::MAX as usize) as u32;
                 if warning_count > max_fs {
                     violations.push(format!(
                         "{}: {} potential false sharing issue(s) exceeds limit of {}",
