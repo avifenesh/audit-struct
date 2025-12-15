@@ -165,6 +165,36 @@ impl<'a> DwarfContext<'a> {
         Ok(members)
     }
 
+    /// Resolve type information from a DW_AT_type attribute.
+    /// Returns (type_name, size, is_atomic) or a default for unknown types.
+    fn resolve_type_attr(
+        &self,
+        unit: &Unit<DwarfSlice<'a>>,
+        entry: &DebuggingInformationEntry<DwarfSlice<'a>>,
+        type_resolver: &mut TypeResolver<'a, '_>,
+    ) -> Result<(String, Option<u64>, bool)> {
+        match entry.attr_value(gimli::DW_AT_type) {
+            Ok(Some(AttributeValue::UnitRef(type_offset))) => {
+                type_resolver.resolve_type(type_offset)
+            }
+            Ok(Some(AttributeValue::DebugInfoRef(debug_info_offset))) => {
+                // Convert section offset to unit offset.
+                // Use checked_sub to detect invalid cross-unit references (corruption).
+                if let Some(unit_debug_offset) = unit.header.offset().as_debug_info_offset() {
+                    if let Some(offset_val) = debug_info_offset.0.checked_sub(unit_debug_offset.0) {
+                        type_resolver.resolve_type(gimli::UnitOffset(offset_val))
+                    } else {
+                        // Invalid: debug_info_offset < unit_debug_offset (corrupted DWARF)
+                        Ok(("unknown".to_string(), None, false))
+                    }
+                } else {
+                    Ok(("unknown".to_string(), None, false))
+                }
+            }
+            _ => Ok(("unknown".to_string(), None, false)),
+        }
+    }
+
     fn process_inheritance(
         &self,
         unit: &Unit<DwarfSlice<'a>>,
@@ -172,22 +202,7 @@ impl<'a> DwarfContext<'a> {
         type_resolver: &mut TypeResolver<'a, '_>,
     ) -> Result<Option<MemberLayout>> {
         let offset = self.get_member_offset(unit, entry)?;
-
-        let (type_name, size, is_atomic) = match entry.attr_value(gimli::DW_AT_type) {
-            Ok(Some(AttributeValue::UnitRef(type_offset))) => {
-                type_resolver.resolve_type(type_offset)?
-            }
-            Ok(Some(AttributeValue::DebugInfoRef(debug_info_offset))) => {
-                if let Some(unit_debug_offset) = unit.header.offset().as_debug_info_offset() {
-                    let unit_offset =
-                        gimli::UnitOffset(debug_info_offset.0.saturating_sub(unit_debug_offset.0));
-                    type_resolver.resolve_type(unit_offset)?
-                } else {
-                    ("unknown".to_string(), None, false)
-                }
-            }
-            _ => ("unknown".to_string(), None, false),
-        };
+        let (type_name, size, is_atomic) = self.resolve_type_attr(unit, entry, type_resolver)?;
 
         let name = format!("<base: {}>", type_name);
         Ok(Some(MemberLayout::new(name, type_name, offset, size).with_atomic(is_atomic)))
@@ -200,23 +215,7 @@ impl<'a> DwarfContext<'a> {
         type_resolver: &mut TypeResolver<'a, '_>,
     ) -> Result<Option<MemberLayout>> {
         let name = self.get_die_name(unit, entry)?.unwrap_or_else(|| "<anonymous>".to_string());
-
-        let (type_name, size, is_atomic) = match entry.attr_value(gimli::DW_AT_type) {
-            Ok(Some(AttributeValue::UnitRef(type_offset))) => {
-                type_resolver.resolve_type(type_offset)?
-            }
-            Ok(Some(AttributeValue::DebugInfoRef(debug_info_offset))) => {
-                // Convert section offset to unit offset
-                if let Some(unit_debug_offset) = unit.header.offset().as_debug_info_offset() {
-                    let unit_offset =
-                        gimli::UnitOffset(debug_info_offset.0.saturating_sub(unit_debug_offset.0));
-                    type_resolver.resolve_type(unit_offset)?
-                } else {
-                    ("unknown".to_string(), None, false)
-                }
-            }
-            _ => ("unknown".to_string(), None, false),
-        };
+        let (type_name, size, is_atomic) = self.resolve_type_attr(unit, entry, type_resolver)?;
 
         let offset = self.get_member_offset(unit, entry)?;
 
@@ -254,16 +253,22 @@ impl<'a> DwarfContext<'a> {
             // Compute bit offset within the containing storage unit.
             if let Some(container_offset) = container_offset {
                 if let Some(data_bit_offset) = dwarf5_data_bit_offset {
-                    member.bit_offset = Some(data_bit_offset.saturating_sub(container_offset * 8));
+                    // Use checked_mul to avoid overflow for large container offsets.
+                    if let Some(container_bits) = container_offset.checked_mul(8) {
+                        member.bit_offset = Some(data_bit_offset.saturating_sub(container_bits));
+                    }
                 } else if let Some(raw_bit_offset) = dwarf4_bit_offset {
-                    if raw_bit_offset + bit_size <= storage_bits {
-                        let bit_offset = match self.endian {
-                            gimli::RunTimeEndian::Little => {
-                                storage_bits - raw_bit_offset - bit_size
-                            }
-                            gimli::RunTimeEndian::Big => raw_bit_offset,
-                        };
-                        member.bit_offset = Some(bit_offset);
+                    // Use checked_add to avoid overflow in boundary check.
+                    if let Some(end_bit) = raw_bit_offset.checked_add(bit_size) {
+                        if end_bit <= storage_bits {
+                            let bit_offset = match self.endian {
+                                gimli::RunTimeEndian::Little => {
+                                    storage_bits - raw_bit_offset - bit_size
+                                }
+                                gimli::RunTimeEndian::Big => raw_bit_offset,
+                            };
+                            member.bit_offset = Some(bit_offset);
+                        }
                     }
                 }
             }
