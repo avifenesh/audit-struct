@@ -78,11 +78,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools
 
-      - name: Build
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
         env:
           BUILD_TARGET: ${{ matrix.target }}
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: cargo build --release --target "$BUILD_TARGET"
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Prepare artifact (Unix)
         if: runner.os != 'Windows'
@@ -95,10 +100,7 @@ jobs:
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
-        env:
-          BUILD_TARGET: ${{ matrix.target }}
-          ARTIFACT_NAME: ${{ matrix.name }}
-        run: cp target/${env:BUILD_TARGET}/release/layout-audit.exe ${env:ARTIFACT_NAME}
+        run: cp target/${{ matrix.target }}/release/layout-audit.exe ${{ matrix.name }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
