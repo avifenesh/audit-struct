@@ -57,11 +57,13 @@ runs:
   steps:
     - name: Install layout-audit
       shell: bash
+      env:
+        INSTALL_VERSION: ${{ inputs.version }}
       run: |
-        if [ "${{ inputs.version }}" = "latest" ]; then
-          cargo install layout-audit
+        if [ "$INSTALL_VERSION" = "latest" ]; then
+          cargo install layout-audit --locked
         else
-          cargo install layout-audit --version ${{ inputs.version }}
+          cargo install layout-audit --version "$INSTALL_VERSION" --locked
         fi
 
     - name: Run layout-audit

@@ -230,18 +230,6 @@ jobs:
         run: echo '${{ steps.layout.outputs.report }}' | jq '.structs | length'
 ```
 
-## CLI Installation
-
-```bash
-cargo install layout-audit
-```
-
-Or build from source:
-
-```bash
-cargo build --release
-```
-
 ## CLI Usage
 
 ### inspect - Analyze struct layouts
@@ -307,9 +295,14 @@ Exit code 1 if any budget is exceeded
 
 ## Requirements
 
+- **Rust 1.85+** (MSRV)
 - Binary must be compiled with debug information (`-g` flag)
 - Supported formats: ELF (Linux), Mach-O (macOS), PE (Windows with MinGW)
 - On macOS, use the dSYM bundle: `./binary.dSYM/Contents/Resources/DWARF/binary`
+
+## Limitations
+
+- Structs with identical names across compilation units are deduplicated by name in diff output
 
 ## Language Support
 
