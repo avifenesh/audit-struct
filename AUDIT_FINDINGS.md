@@ -9,6 +9,9 @@ This file captures the issues found during a deep review + the changes made to f
 | 1 + 2 | Deterministic diff output + struct deduplication | 22215a7 |
 | 3 | --max-align validation | c550eae |
 | 4 | GitHub Action docs | e0d9189 |
+| 5 | diff.rs: overflow handling, docs, optimization | 8c45734 |
+| 6 | context.rs: stable dedup, helper consolidation, overflow | 4cdaaad |
+| 7 | optimize.rs: overflow protection, test coverage | a51e7ca |
 
 ## Environment and validation
 
@@ -264,4 +267,65 @@ Code: `action.yml`.
 ## Notes on `unsafe` blocks
 
 The only `unsafe` usage is in DWARF section loading and memory mapping (`src/loader.rs`). During this audit, no concrete unsoundness was identified, and unit/integration tests passed. This remains the most sensitive area of the codebase and should be the first place to look if you see platform-specific crashes on unusual binaries.
+
+---
+
+## Code Review Findings (Dec 15, 2025 - Second Pass)
+
+After the initial audit fixes were committed, a second code review identified additional issues.
+
+## Finding 5: diff.rs code quality issues
+
+### Issues identified
+
+1. **Integer overflow in `member_similarity_score()`**: `i64::try_from()` fallback to `i64::MAX` created incorrect math when subtracting large values.
+2. **Magic number for location mismatch penalty**: `i64::MIN / 4` was undocumented.
+3. **BTreeMap usage undocumented**: Future maintainers could accidentally switch to HashMap, reintroducing non-determinism.
+4. **Wasted O(n*m) similarity calculations**: `scored` vec was built even when only 1 item remained on each side.
+
+### Fix
+
+- Use `u64::abs_diff()` for safe absolute difference calculation
+- Use `i128` in `diff_struct()` for safe signed delta
+- Add `LOCATION_MISMATCH_PENALTY` constant with documentation
+- Add comments explaining BTreeMap is required for determinism
+- Move "exactly one remaining" check before building `scored` vec
+
+Code: `src/diff.rs`
+
+## Finding 6: context.rs code quality issues
+
+### Issues identified
+
+1. **Unstable deduplication**: `sort_by` doesn't preserve original order for equal elements; identical fingerprints could keep different items across runs.
+2. **Duplicate `read_u64_attr` closures**: Two nearly-identical closures in `process_member()` and `get_source_location()`.
+3. **Negative Sdata silently ignored**: Returns `None` without warning for negative values.
+4. **No overflow checks in container_offset**: Division could theoretically fail without checked arithmetic.
+
+### Fix
+
+- Add enumerated index as tiebreaker for stable deduplication
+- Consolidate closures into `read_u64_from_attr()` helper function with documentation
+- Document that negative Sdata values return None (invalid for offsets/sizes)
+- Use `checked_div()` and `checked_mul()` for container_offset calculation
+
+Code: `src/dwarf/context.rs`
+
+## Finding 7: optimize.rs edge cases
+
+### Issues identified
+
+1. **Overflow near u64::MAX**: `align_up()` with `saturating_add` could return a value less than input near max range.
+2. **Incomplete test coverage**: Missing tests for `alignment=0`, `alignment=1`, larger non-power-of-two, overflow cases.
+
+### Fix
+
+- Use `checked_add()` instead of `saturating_add()`, return `u64::MAX` on overflow
+- Added comprehensive test cases covering all edge cases
+
+Code: `src/analysis/optimize.rs`
+
+### Validation
+
+All 81 tests pass. `cargo clippy --all-targets -- -D warnings` is clean.
 
