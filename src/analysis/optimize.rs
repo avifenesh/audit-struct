@@ -49,11 +49,12 @@ pub fn infer_alignment(size: u64, max_align: u64) -> u64 {
 
 /// Align value up to alignment boundary.
 fn align_up(value: u64, alignment: u64) -> u64 {
-    if alignment == 0 {
+    if alignment <= 1 {
         return value;
     }
-    let mask = alignment - 1;
-    (value + mask) & !mask
+    // Works for any positive alignment (not only powers of two).
+    let add = value.saturating_add(alignment - 1);
+    (add / alignment) * alignment
 }
 
 /// A sortable unit for optimization - either a single member or a bitfield group.
@@ -102,6 +103,7 @@ fn find_bitfield_groups(members: &[MemberLayout]) -> Vec<Vec<usize>> {
 /// Optimize a struct layout by reordering fields to minimize padding.
 /// Uses greedy bin-packing: sort by alignment desc, then size desc.
 pub fn optimize_layout(layout: &StructLayout, max_align: u64) -> OptimizedLayout {
+    let max_align = max_align.max(1);
     // If struct alignment is known, use it; otherwise infer from member alignments
     let inferred_alignment = layout
         .members
@@ -263,6 +265,8 @@ mod tests {
         assert_eq!(align_up(4, 4), 4);
         assert_eq!(align_up(5, 4), 8);
         assert_eq!(align_up(7, 8), 8);
+        assert_eq!(align_up(4, 3), 6);
+        assert_eq!(align_up(6, 3), 6);
     }
 
     #[test]
@@ -314,5 +318,18 @@ mod tests {
         let result = optimize_layout(&layout, 8);
 
         assert_eq!(result.skipped_members, vec!["b"]);
+    }
+
+    #[test]
+    fn test_max_align_zero_is_safely_clamped() {
+        let mut layout = StructLayout::new("Test".to_string(), 12, Some(4));
+        layout.members = vec![
+            MemberLayout::new("a".to_string(), "char".to_string(), Some(0), Some(1)),
+            MemberLayout::new("b".to_string(), "int".to_string(), Some(4), Some(4)),
+        ];
+
+        let result = optimize_layout(&layout, 0);
+        assert!(result.struct_alignment >= 1);
+        assert!(result.optimized_size > 0);
     }
 }

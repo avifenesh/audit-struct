@@ -132,7 +132,7 @@ pub enum Commands {
         pretty: bool,
 
         /// Maximum alignment to assume for types (typically 8 on 64-bit)
-        #[arg(long, default_value = "8")]
+        #[arg(long, default_value = "8", value_parser = clap::value_parser!(u64).range(1..))]
         max_align: u64,
 
         /// Sort suggestions by savings amount (largest first)
