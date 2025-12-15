@@ -202,11 +202,15 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
         match entry.attr_value(gimli::DW_AT_type) {
             Ok(Some(AttributeValue::UnitRef(offset))) => Ok(Some(offset)),
             Ok(Some(AttributeValue::DebugInfoRef(debug_info_offset))) => {
-                // Convert section offset to unit offset
+                // Convert section offset to unit offset.
+                // Use checked_sub to detect invalid cross-unit references (corrupted DWARF).
                 if let Some(unit_debug_offset) = self.unit.header.offset().as_debug_info_offset() {
-                    let unit_offset =
-                        UnitOffset(debug_info_offset.0.saturating_sub(unit_debug_offset.0));
-                    Ok(Some(unit_offset))
+                    if let Some(offset_val) = debug_info_offset.0.checked_sub(unit_debug_offset.0) {
+                        Ok(Some(UnitOffset(offset_val)))
+                    } else {
+                        // Invalid: debug_info_offset < unit_debug_offset (corrupted DWARF)
+                        Ok(None)
+                    }
                 } else {
                     Ok(None)
                 }
