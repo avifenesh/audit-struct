@@ -21,6 +21,7 @@ This file captures the issues found during a deep review + the changes made to f
 | 14-16 | Fifth pass: overflow, clone, code consolidation | 85214cf, 688b9bb |
 | 18-20 | Sixth pass: array overflow, BTreeSet, helper extraction | 3436dec, 970c2e0 |
 | 21-23 | Seventh pass: end_offset overflow, ZST alignment, into_owned | 97a7938 |
+| 24-27 | Eighth pass: expr.rs overflow, padding.rs u32, false_sharing.rs cast | 34691ab |
 
 ## Environment and validation
 
@@ -612,6 +613,82 @@ Multiple places used `to_string_lossy().to_string()` which is less efficient tha
   - `src/dwarf/context.rs` (DIE name and file path resolution)
 
 Code: `src/dwarf/types.rs`, `src/dwarf/context.rs`
+
+### Validation
+
+All 82 tests pass. `cargo clippy --all-targets -- -D warnings` is clean.
+
+---
+
+## Code Review Findings (Dec 16, 2025 - Eighth Pass)
+
+Additional issues found during continued code review.
+
+## Finding 24: expr.rs address_size shift overflow
+
+### Issue identified
+
+The address mask calculation in `evaluate_member_offset()` used a shift operation that could panic or produce incorrect results for invalid address sizes:
+- `address_size == 0`: would produce mask `0` instead of failing gracefully
+- `address_size > 8`: would cause shift overflow (panic in debug, wrap in release)
+
+### Fix
+
+- Use match statement to explicitly handle all cases
+- Return `Ok(None)` for invalid address sizes (0 or > 8)
+- Safe bounds checking prevents panic from malformed DWARF
+
+Code: `src/dwarf/expr.rs`
+
+## Finding 25: expr.rs double expression parsing
+
+### Issue identified
+
+`try_simple_offset()` called `expr.operations(encoding)` twice - once to check for `PlusConstant`, then again for `UnsignedConstant`. This doubled parsing work for the most common offset encoding patterns.
+
+### Fix
+
+- Parse expression once using a single iterator
+- Use match to handle both operation types in one pass
+- ~50% reduction in parsing overhead for simple offsets
+
+Code: `src/dwarf/expr.rs`
+
+## Finding 26: padding.rs u32 truncation overflow
+
+### Issue identified
+
+Cache line count calculation cast `div_ceil` result directly to `u32`:
+```rust
+layout.size.div_ceil(cache_line_size_u64) as u32
+```
+
+For extremely large struct sizes, this would silently truncate values exceeding `u32::MAX`.
+
+### Fix
+
+- Clamp result to `u32::MAX` before casting: `.min(u32::MAX as u64) as u32`
+- Applied to both occurrences (lines 47-48 and 109-110)
+
+Code: `src/analysis/padding.rs`
+
+## Finding 27: false_sharing.rs unsafe u64-to-i64 cast
+
+### Issue identified
+
+Gap bytes calculation cast large u64 values directly to i64:
+```rust
+let gap_bytes = second.offset as i64 - first_end as i64;
+```
+
+For offsets > `i64::MAX`, the cast produces incorrect negative values due to sign bit interpretation.
+
+### Fix
+
+- Cap values at `i64::MAX` before casting: `.min(i64::MAX as u64) as i64`
+- Use `saturating_sub` for the subtraction to handle edge cases
+
+Code: `src/analysis/false_sharing.rs`
 
 ### Validation
 
