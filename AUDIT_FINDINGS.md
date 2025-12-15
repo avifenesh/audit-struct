@@ -19,7 +19,8 @@ This file captures the issues found during a deep review + the changes made to f
 | 12 | optimize.rs: bitfield tracking, no silent data loss | 6d1d017 |
 | 13 | context.rs: consolidate attribute parsing | e88d7f3 |
 | 14-16 | Fifth pass: overflow, clone, code consolidation | 85214cf, 688b9bb |
-| 18-19 | Sixth pass: array overflow, BTreeSet, helper extraction | 3436dec, 970c2e0 |
+| 18-20 | Sixth pass: array overflow, BTreeSet, helper extraction | 3436dec, 970c2e0 |
+| 21-23 | Seventh pass: end_offset overflow, ZST alignment, into_owned | 97a7938 |
 
 ## Environment and validation
 
@@ -562,6 +563,55 @@ The logic for converting `DebugInfoRef` (section offset) to `UnitOffset` (unit-r
 - Both modules now use the shared helper
 
 Code: `src/dwarf/mod.rs`, `src/dwarf/types.rs`, `src/dwarf/context.rs`
+
+### Validation
+
+All 82 tests pass. `cargo clippy --all-targets -- -D warnings` is clean.
+
+---
+
+## Code Review Findings (Dec 16, 2025 - Seventh Pass)
+
+Additional issues found during continued code review.
+
+## Finding 21: types.rs end_offset() overflow
+
+### Issue identified
+
+`MemberLayout::end_offset()` used direct addition `off + sz` which could overflow for malformed DWARF data with very large offset or size values.
+
+### Fix
+
+- Use `checked_add` to return `None` on overflow instead of wrapping
+
+Code: `src/types.rs`
+
+## Finding 22: optimize.rs ZST alignment calculation clarity
+
+### Issue identified
+
+The alignment inference loop filtered ZSTs implicitly via `infer_alignment(0, _) == 1`, but this was unclear and could confuse maintainers. The intent to exclude zero-size types from alignment calculation should be explicit.
+
+### Fix
+
+- Add explicit `.filter(|&s| s > 0)` with comment explaining ZSTs don't affect struct alignment
+- Makes the code self-documenting
+
+Code: `src/analysis/optimize.rs`
+
+## Finding 23: Cow string conversion efficiency
+
+### Issue identified
+
+Multiple places used `to_string_lossy().to_string()` which is less efficient than `to_string_lossy().into_owned()`. The former creates an intermediate `String` copy when the `Cow<str>` is already owned.
+
+### Fix
+
+- Replace `to_string_lossy().to_string()` with `to_string_lossy().into_owned()` in:
+  - `src/dwarf/types.rs` (type name resolution)
+  - `src/dwarf/context.rs` (DIE name and file path resolution)
+
+Code: `src/dwarf/types.rs`, `src/dwarf/context.rs`
 
 ### Validation
 
