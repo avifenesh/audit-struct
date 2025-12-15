@@ -48,13 +48,20 @@ pub fn infer_alignment(size: u64, max_align: u64) -> u64 {
 }
 
 /// Align value up to alignment boundary.
+/// Returns value unchanged if alignment <= 1.
+/// For values near u64::MAX where alignment would overflow, returns u64::MAX.
 fn align_up(value: u64, alignment: u64) -> u64 {
     if alignment <= 1 {
         return value;
     }
     // Works for any positive alignment (not only powers of two).
-    let add = value.saturating_add(alignment - 1);
-    (add / alignment) * alignment
+    // Use checked arithmetic to detect overflow near u64::MAX.
+    match value.checked_add(alignment - 1) {
+        Some(sum) => (sum / alignment) * alignment,
+        // Overflow: value is near u64::MAX and can't be aligned up safely.
+        // Return u64::MAX as a safe upper bound (real structs won't hit this).
+        None => u64::MAX,
+    }
 }
 
 /// A sortable unit for optimization - either a single member or a bitfield group.
@@ -260,13 +267,29 @@ mod tests {
 
     #[test]
     fn test_align_up() {
+        // Basic cases
         assert_eq!(align_up(0, 4), 0);
         assert_eq!(align_up(1, 4), 4);
         assert_eq!(align_up(4, 4), 4);
         assert_eq!(align_up(5, 4), 8);
         assert_eq!(align_up(7, 8), 8);
+
+        // Non-power-of-two alignments
         assert_eq!(align_up(4, 3), 6);
         assert_eq!(align_up(6, 3), 6);
+        assert_eq!(align_up(10, 12), 12);
+        assert_eq!(align_up(24, 12), 24);
+
+        // Edge case: alignment = 0 (returns value unchanged)
+        assert_eq!(align_up(10, 0), 10);
+
+        // Edge case: alignment = 1 (returns value unchanged)
+        assert_eq!(align_up(5, 1), 5);
+        assert_eq!(align_up(0, 1), 0);
+
+        // Overflow protection: value near u64::MAX
+        assert_eq!(align_up(u64::MAX - 5, 16), u64::MAX);
+        assert_eq!(align_up(u64::MAX, 8), u64::MAX);
     }
 
     #[test]
