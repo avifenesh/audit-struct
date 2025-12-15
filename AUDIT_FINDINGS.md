@@ -12,6 +12,9 @@ This file captures the issues found during a deep review + the changes made to f
 | 5 | diff.rs: overflow handling, docs, optimization | 8c45734 |
 | 6 | context.rs: stable dedup, helper consolidation, overflow | 4cdaaad |
 | 7 | optimize.rs: overflow protection, test coverage | a51e7ca |
+| 8 | optimize.rs: bitfield grouping, bit_offset, zero-size | f1e01cf |
+| 9 | diff.rs: scoring constants, BTreeMap, count_delta | e2acfb3 |
+| 10 | context.rs: type resolution helper, checked arithmetic | 8151a56 |
 
 ## Environment and validation
 
@@ -324,6 +327,70 @@ Code: `src/dwarf/context.rs`
 - Added comprehensive test cases covering all edge cases
 
 Code: `src/analysis/optimize.rs`
+
+### Validation
+
+All 81 tests pass. `cargo clippy --all-targets -- -D warnings` is clean.
+
+---
+
+## Code Review Findings (Dec 15, 2025 - Third Pass)
+
+Additional issues found during targeted code review after the second pass fixes.
+
+## Finding 8: optimize.rs critical issues
+
+### Issues identified
+
+1. **Bitfield grouping comparison bug**: `None == None` matched, incorrectly grouping bitfields without known offsets
+2. **Bitfield bit_offset invalid after reordering**: Original bit_offset preserved but meaningless in new layout
+3. **Offset overflow**: `aligned_offset + unit.total_size` could overflow
+4. **Zero-size types silently dropped**: Not added to `skipped_members`
+5. **Hardcoded fallback**: Used 4 bytes as default bitfield group size
+
+### Fix
+
+- Only match bitfield offsets when both are `Some` (known values)
+- Clear bit_offset after reordering (keep bit_size for reference)
+- Use `saturating_add` for offset calculation
+- Add zero-size types to `skipped_members` with "(zero-size)" annotation
+- Skip groups where size can't be determined reliably
+
+Code: `src/analysis/optimize.rs`
+
+## Finding 9: diff.rs code quality issues
+
+### Issues identified
+
+1. **count_delta overflow**: `unsigned_abs() as i64` could overflow for large differences
+2. **HashMap non-determinism**: `diff_struct` used HashMap while rest of module uses BTreeMap
+3. **Magic numbers**: Scoring values (5, 2, 1, 10) were undocumented
+
+### Fix
+
+- Use `abs_diff()` with `.min(i64::MAX as usize)` for safe conversion
+- Change to BTreeMap for deterministic iteration
+- Extract constants: `SCORE_TYPE_MATCH`, `SCORE_SIZE_MATCH`, `SCORE_OFFSET_MATCH`, `SCORE_MEMBER_OVERLAP`
+
+Code: `src/diff.rs`
+
+## Finding 10: context.rs overflow and duplication
+
+### Issues identified
+
+1. **Type resolution duplication**: Nearly identical code in `process_inheritance` and `process_member`
+2. **saturating_sub wrong offsets**: Could produce 0 for corrupted DWARF instead of failing
+3. **container_offset * 8 overflow**: Unchecked multiplication
+4. **raw_bit_offset + bit_size overflow**: Unchecked addition in guard condition
+
+### Fix
+
+- Extract `resolve_type_attr()` helper method
+- Use `checked_sub` to detect invalid cross-unit references
+- Use `checked_mul` for container_offset * 8
+- Use `checked_add` for bitfield boundary check
+
+Code: `src/dwarf/context.rs`
 
 ### Validation
 
