@@ -104,6 +104,45 @@ pub enum Commands {
         #[arg(long, default_value = "64", value_parser = clap::value_parser!(u32).range(1..))]
         cache_line: u32,
     },
+
+    /// Suggest optimal field ordering to minimize padding
+    Suggest {
+        /// Path to the binary file to analyze
+        #[arg(value_name = "BINARY")]
+        binary: PathBuf,
+
+        /// Filter structs by name (substring match)
+        #[arg(short, long)]
+        filter: Option<String>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value = "table")]
+        output: OutputFormat,
+
+        /// Show only structs with at least N bytes of potential savings
+        #[arg(long)]
+        min_savings: Option<u64>,
+
+        /// Cache line size in bytes (must be > 0)
+        #[arg(long, default_value = "64", value_parser = clap::value_parser!(u32).range(1..))]
+        cache_line: u32,
+
+        /// Pretty-print JSON output
+        #[arg(long)]
+        pretty: bool,
+
+        /// Maximum alignment to assume for types (typically 8 on 64-bit)
+        #[arg(long, default_value = "8")]
+        max_align: u64,
+
+        /// Sort suggestions by savings amount (largest first)
+        #[arg(long)]
+        sort_by_savings: bool,
+
+        /// Disable colored output
+        #[arg(long)]
+        no_color: bool,
+    },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]

@@ -1179,6 +1179,197 @@ budgets:
 }
 
 // ============================================================================
+// Suggest command tests
+// ============================================================================
+
+#[test]
+fn test_suggest_basic() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "suggest",
+            path.to_str().unwrap(),
+            "--filter",
+            "InternalPadding",
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run suggest command");
+
+    assert!(
+        output.status.success(),
+        "Suggest should succeed: {:?}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+
+    let suggestions = parsed["suggestions"].as_array().unwrap();
+    assert!(!suggestions.is_empty(), "Should find InternalPadding");
+
+    let suggestion = &suggestions[0];
+    assert_eq!(suggestion["name"], "InternalPadding");
+    assert!(suggestion["savings_bytes"].as_u64().unwrap() > 0, "Should have savings");
+}
+
+#[test]
+fn test_suggest_no_savings_struct() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "suggest",
+            path.to_str().unwrap(),
+            "--filter",
+            "NoPadding",
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run suggest command");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+
+    let suggestions = parsed["suggestions"].as_array().unwrap();
+    let suggestion = &suggestions[0];
+    assert_eq!(suggestion["savings_bytes"], 0, "NoPadding should have no savings");
+}
+
+#[test]
+fn test_suggest_min_savings_filter() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "suggest",
+            path.to_str().unwrap(),
+            "--min-savings",
+            "100",
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run suggest command");
+
+    // Should succeed but report no structs with 100+ bytes savings
+    assert!(output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("No structs with optimization potential"),
+        "Should report no structs found: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_suggest_table_output() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "suggest",
+            path.to_str().unwrap(),
+            "--filter",
+            "InternalPadding",
+            "-o",
+            "table",
+        ])
+        .output()
+        .expect("Failed to run suggest command");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Current layout:"), "Should show current layout");
+    assert!(stdout.contains("Suggested layout:"), "Should show suggested layout");
+    assert!(
+        stdout.contains("Reordering may affect") || stdout.contains("serialization"),
+        "Should show FFI warning"
+    );
+}
+
+#[test]
+fn test_suggest_sort_by_savings() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "suggest", path.to_str().unwrap(), "--sort-by-savings", "-o", "json"])
+        .output()
+        .expect("Failed to run suggest command");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+
+    let suggestions = parsed["suggestions"].as_array().unwrap();
+    // Verify sorted in descending order by savings
+    for i in 1..suggestions.len() {
+        let prev_savings = suggestions[i - 1]["savings_bytes"].as_u64().unwrap();
+        let curr_savings = suggestions[i]["savings_bytes"].as_u64().unwrap();
+        assert!(prev_savings >= curr_savings, "Not sorted by savings");
+    }
+}
+
+#[test]
+fn test_suggest_json_summary() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "suggest", path.to_str().unwrap(), "-o", "json"])
+        .output()
+        .expect("Failed to run suggest command");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+
+    // Check summary fields exist
+    assert!(parsed["summary"]["total_structs"].as_u64().is_some(), "Should have total_structs");
+    assert!(
+        parsed["summary"]["optimizable_structs"].as_u64().is_some(),
+        "Should have optimizable_structs"
+    );
+    assert!(
+        parsed["summary"]["total_savings_bytes"].as_u64().is_some(),
+        "Should have total_savings_bytes"
+    );
+}
+
+// ============================================================================
 // C++ template tests
 // ============================================================================
 

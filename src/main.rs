@@ -2,7 +2,8 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 use layout_audit::{
     BinaryData, Cli, Commands, DwarfContext, JsonFormatter, OutputFormat, SortField,
-    TableFormatter, analyze_false_sharing, analyze_layout, diff_layouts,
+    SuggestJsonFormatter, SuggestTableFormatter, TableFormatter, analyze_false_sharing,
+    analyze_layout, diff_layouts, optimize_layout,
 };
 use std::path::Path;
 
@@ -58,6 +59,29 @@ fn main() -> Result<()> {
         }
         Commands::Check { binary, config, cache_line } => {
             run_check(&binary, &config, cache_line)?;
+        }
+        Commands::Suggest {
+            binary,
+            filter,
+            output,
+            min_savings,
+            cache_line,
+            pretty,
+            max_align,
+            sort_by_savings,
+            no_color,
+        } => {
+            run_suggest(
+                &binary,
+                filter.as_deref(),
+                output,
+                min_savings,
+                cache_line,
+                pretty,
+                max_align,
+                sort_by_savings,
+                no_color,
+            )?;
         }
     }
 
@@ -496,4 +520,72 @@ impl CompiledBudgets {
         }
         None
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_suggest(
+    binary_path: &Path,
+    filter: Option<&str>,
+    output_format: OutputFormat,
+    min_savings: Option<u64>,
+    cache_line_size: u32,
+    pretty: bool,
+    max_align: u64,
+    sort_by_savings: bool,
+    no_color: bool,
+) -> Result<()> {
+    let binary = BinaryData::load(binary_path)
+        .with_context(|| format!("Failed to load binary: {}", binary_path.display()))?;
+
+    let loaded = binary.load_dwarf().context("Failed to load DWARF debug info")?;
+    let dwarf = DwarfContext::new(&loaded);
+
+    let mut layouts = dwarf.find_structs(filter).context("Failed to parse struct layouts")?;
+
+    if layouts.is_empty() {
+        if let Some(f) = filter {
+            eprintln!("No structs found matching filter: {}", f);
+        } else {
+            eprintln!("No structs found in binary");
+        }
+        return Ok(());
+    }
+
+    // Analyze layouts first (needed for metrics)
+    for layout in &mut layouts {
+        analyze_layout(layout, cache_line_size);
+    }
+
+    // Optimize each layout
+    let mut suggestions: Vec<_> = layouts.iter().map(|l| optimize_layout(l, max_align)).collect();
+
+    // Filter by minimum savings
+    if let Some(min) = min_savings {
+        suggestions.retain(|s| s.savings_bytes >= min);
+    }
+
+    if suggestions.is_empty() {
+        eprintln!("No structs with optimization potential found");
+        return Ok(());
+    }
+
+    // Sort by savings if requested
+    if sort_by_savings {
+        suggestions.sort_by(|a, b| b.savings_bytes.cmp(&a.savings_bytes));
+    }
+
+    let output_str = match output_format {
+        OutputFormat::Table => {
+            let formatter = SuggestTableFormatter::new(no_color);
+            formatter.format(&suggestions)
+        }
+        OutputFormat::Json => {
+            let formatter = SuggestJsonFormatter::new(pretty);
+            formatter.format(&suggestions)
+        }
+    };
+
+    println!("{}", output_str);
+
+    Ok(())
 }
