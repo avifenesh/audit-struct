@@ -82,7 +82,13 @@ fn find_bitfield_groups(members: &[MemberLayout]) -> Vec<Vec<usize>> {
     for (idx, member) in members.iter().enumerate() {
         if member.bit_size.is_some() {
             let base_offset = member.offset;
-            if current_offset == base_offset && !current_group.is_empty() {
+            // Only group bitfields with known, matching offsets.
+            // None == None should NOT match (can't verify they share storage).
+            let same_storage = match (current_offset, base_offset) {
+                (Some(curr), Some(base)) => curr == base,
+                _ => false,
+            };
+            if same_storage && !current_group.is_empty() {
                 // Same storage unit
                 current_group.push(idx);
             } else {
@@ -140,8 +146,9 @@ pub fn optimize_layout(layout: &StructLayout, max_align: u64) -> OptimizedLayout
             skipped_members.push(member.name.clone());
             continue;
         };
-        // Skip zero-size types
+        // Skip zero-size types (ZSTs don't affect layout)
         if size == 0 {
+            skipped_members.push(format!("{} (zero-size)", member.name));
             continue;
         }
 
@@ -183,8 +190,11 @@ pub fn optimize_layout(layout: &StructLayout, max_align: u64) -> OptimizedLayout
         }
 
         // Bitfield group size = storage unit size (from first member)
-        let total_size = group_members.first().map(|m| m.size).unwrap_or(4);
-        let alignment = group_members.iter().map(|m| m.alignment).max().unwrap_or(4);
+        // Skip groups where we can't determine size reliably.
+        let Some(total_size) = group_members.first().map(|m| m.size) else {
+            continue;
+        };
+        let alignment = group_members.iter().map(|m| m.alignment).max().unwrap_or(1);
 
         for idx in group {
             processed_indices.insert(*idx);
@@ -223,10 +233,16 @@ pub fn optimize_layout(layout: &StructLayout, max_align: u64) -> OptimizedLayout
 
         for mut member in unit.members {
             member.offset = aligned_offset;
+            // Clear bit_offset after reordering - the original value was relative to
+            // the original layout and is no longer valid. Keep bit_size for reference.
+            if member.bit_size.is_some() {
+                member.bit_offset = None;
+            }
             optimized_members.push(member);
         }
 
-        current_offset = aligned_offset + unit.total_size;
+        // Use saturating_add to prevent overflow near u64::MAX
+        current_offset = aligned_offset.saturating_add(unit.total_size);
     }
 
     // Add tail padding to reach struct alignment
