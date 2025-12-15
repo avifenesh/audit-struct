@@ -32,7 +32,15 @@ impl<'a> DwarfContext<'a> {
             self.process_unit(&unit, filter, &mut structs)?;
         }
 
-        Ok(structs)
+        // DWARF can contain duplicate identical type entries (e.g., across units or due to
+        // language/compiler quirks). Deduplicate exact duplicates to avoid double-counting in
+        // `check` and unstable matching in `diff`.
+        let mut with_fp: Vec<(StructFingerprint, StructLayout)> =
+            structs.into_iter().map(|s| (struct_fingerprint(&s), s)).collect();
+        with_fp.sort_by(|a, b| a.0.cmp(&b.0));
+        with_fp.dedup_by(|a, b| a.0 == b.0);
+
+        Ok(with_fp.into_iter().map(|(_, s)| s).collect())
     }
 
     fn process_unit(
@@ -303,16 +311,21 @@ impl<'a> DwarfContext<'a> {
         unit: &Unit<DwarfSlice<'a>>,
         entry: &DebuggingInformationEntry<DwarfSlice<'a>>,
     ) -> Result<Option<SourceLocation>> {
-        let file_index = match entry.attr_value(gimli::DW_AT_decl_file) {
-            Ok(Some(AttributeValue::FileIndex(idx))) => idx,
-            Ok(Some(AttributeValue::Udata(idx))) => idx,
-            _ => return Ok(None),
+        let read_u64_attr = |attr: gimli::DwAt| -> Option<u64> {
+            match entry.attr_value(attr).ok().flatten()? {
+                AttributeValue::FileIndex(idx) => Some(idx),
+                AttributeValue::Udata(v) => Some(v),
+                AttributeValue::Data1(v) => Some(v as u64),
+                AttributeValue::Data2(v) => Some(v as u64),
+                AttributeValue::Data4(v) => Some(v as u64),
+                AttributeValue::Data8(v) => Some(v),
+                AttributeValue::Sdata(v) if v >= 0 => Some(v as u64),
+                _ => None,
+            }
         };
 
-        let line = match entry.attr_value(gimli::DW_AT_decl_line) {
-            Ok(Some(AttributeValue::Udata(l))) => l,
-            _ => return Ok(None),
-        };
+        let Some(file_index) = read_u64_attr(gimli::DW_AT_decl_file) else { return Ok(None) };
+        let Some(line) = read_u64_attr(gimli::DW_AT_decl_line) else { return Ok(None) };
 
         // Try to resolve the file name from the line program header
         let file_name = self.resolve_file_name(unit, file_index).unwrap_or_else(|| {
@@ -350,5 +363,47 @@ impl<'a> DwarfContext<'a> {
         }
 
         Some(file_name)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct StructFingerprint {
+    name: String,
+    size: u64,
+    alignment: Option<u64>,
+    source: Option<(String, u64)>,
+    members: Vec<MemberFingerprint>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct MemberFingerprint {
+    name: String,
+    type_name: String,
+    offset: Option<u64>,
+    size: Option<u64>,
+    bit_offset: Option<u64>,
+    bit_size: Option<u64>,
+    is_atomic: bool,
+}
+
+fn struct_fingerprint(s: &StructLayout) -> StructFingerprint {
+    StructFingerprint {
+        name: s.name.clone(),
+        size: s.size,
+        alignment: s.alignment,
+        source: s.source_location.as_ref().map(|l| (l.file.clone(), l.line)),
+        members: s
+            .members
+            .iter()
+            .map(|m| MemberFingerprint {
+                name: m.name.clone(),
+                type_name: m.type_name.clone(),
+                offset: m.offset,
+                size: m.size,
+                bit_offset: m.bit_offset,
+                bit_size: m.bit_size,
+                is_atomic: m.is_atomic,
+            })
+            .collect(),
     }
 }
