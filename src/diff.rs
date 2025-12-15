@@ -1,10 +1,17 @@
 use crate::types::StructLayout;
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 /// Penalty for matching structs with mismatched source locations.
 /// Large enough to dominate all other scoring factors, preventing cross-location matching.
 const LOCATION_MISMATCH_PENALTY: i64 = i64::MIN / 4;
+
+// Similarity scoring weights for member matching.
+// Higher values = stronger signal for matching same-name duplicates.
+const SCORE_TYPE_MATCH: i64 = 5; // Type name matches
+const SCORE_SIZE_MATCH: i64 = 2; // Size matches
+const SCORE_OFFSET_MATCH: i64 = 1; // Offset matches
+const SCORE_MEMBER_OVERLAP: i64 = 10; // Per overlapping member name
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DiffResult {
@@ -175,29 +182,31 @@ fn member_similarity_score(old: &StructLayout, new: &StructLayout) -> i64 {
     score = score.saturating_sub(pad_delta / 2);
 
     // Member-name overlap drives matching for same-name duplicates.
-    let old_members: HashMap<&str, _> = old.members.iter().map(|m| (m.name.as_str(), m)).collect();
-    let new_members: HashMap<&str, _> = new.members.iter().map(|m| (m.name.as_str(), m)).collect();
+    // Use BTreeMap for deterministic iteration (consistent with rest of module).
+    let old_members: BTreeMap<&str, _> = old.members.iter().map(|m| (m.name.as_str(), m)).collect();
+    let new_members: BTreeMap<&str, _> = new.members.iter().map(|m| (m.name.as_str(), m)).collect();
 
     let mut intersection: i64 = 0;
     for (name, om) in &old_members {
         if let Some(nm) = new_members.get(name) {
             intersection += 1;
             if om.type_name == nm.type_name {
-                score += 5;
+                score += SCORE_TYPE_MATCH;
             }
             if om.size == nm.size {
-                score += 2;
+                score += SCORE_SIZE_MATCH;
             }
             if om.offset == nm.offset {
-                score += 1;
+                score += SCORE_OFFSET_MATCH;
             }
         }
     }
 
-    score += intersection * 10;
+    score += intersection * SCORE_MEMBER_OVERLAP;
 
     // Light preference for similar member count.
-    let count_delta = (old.members.len() as i64 - new.members.len() as i64).unsigned_abs() as i64;
+    // Use abs_diff to avoid overflow for large member counts.
+    let count_delta = old.members.len().abs_diff(new.members.len()).min(i64::MAX as usize) as i64;
     score -= count_delta;
 
     score
@@ -304,8 +313,9 @@ fn diff_struct(old: &StructLayout, new: &StructLayout) -> Option<StructChange> {
 
     let mut member_changes = Vec::new();
 
-    let old_members: HashMap<&str, _> = old.members.iter().map(|m| (m.name.as_str(), m)).collect();
-    let new_members: HashMap<&str, _> = new.members.iter().map(|m| (m.name.as_str(), m)).collect();
+    // Use BTreeMap for deterministic iteration order.
+    let old_members: BTreeMap<&str, _> = old.members.iter().map(|m| (m.name.as_str(), m)).collect();
+    let new_members: BTreeMap<&str, _> = new.members.iter().map(|m| (m.name.as_str(), m)).collect();
 
     for (name, old_member) in &old_members {
         if !new_members.contains_key(name) {
