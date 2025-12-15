@@ -6,6 +6,23 @@ use gimli::{AttributeValue, DebuggingInformationEntry, Dwarf, Unit};
 use super::TypeResolver;
 use super::expr::{evaluate_member_offset, try_simple_offset};
 
+/// Extract a u64 value from a DWARF attribute, handling various encoding forms.
+/// Returns None for negative Sdata values (invalid for offsets/sizes/indices).
+fn read_u64_from_attr(attr: Option<AttributeValue<DwarfSlice<'_>>>) -> Option<u64> {
+    match attr? {
+        AttributeValue::FileIndex(idx) => Some(idx),
+        AttributeValue::Udata(v) => Some(v),
+        AttributeValue::Data1(v) => Some(v as u64),
+        AttributeValue::Data2(v) => Some(v as u64),
+        AttributeValue::Data4(v) => Some(v as u64),
+        AttributeValue::Data8(v) => Some(v),
+        // Negative Sdata values are invalid for offsets/sizes/indices - return None.
+        // This can indicate DWARF corruption or compiler bugs, but we handle gracefully.
+        AttributeValue::Sdata(v) if v >= 0 => Some(v as u64),
+        _ => None,
+    }
+}
+
 pub struct DwarfContext<'a> {
     dwarf: &'a Dwarf<DwarfSlice<'a>>,
     address_size: u8,
@@ -35,12 +52,13 @@ impl<'a> DwarfContext<'a> {
         // DWARF can contain duplicate identical type entries (e.g., across units or due to
         // language/compiler quirks). Deduplicate exact duplicates to avoid double-counting in
         // `check` and unstable matching in `diff`.
-        let mut with_fp: Vec<(StructFingerprint, StructLayout)> =
-            structs.into_iter().map(|s| (struct_fingerprint(&s), s)).collect();
-        with_fp.sort_by(|a, b| a.0.cmp(&b.0));
+        // Use enumerated index as tiebreaker for stable deduplication (Rust's sort_by is unstable).
+        let mut with_fp: Vec<(StructFingerprint, usize, StructLayout)> =
+            structs.into_iter().enumerate().map(|(i, s)| (struct_fingerprint(&s), i, s)).collect();
+        with_fp.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
         with_fp.dedup_by(|a, b| a.0 == b.0);
 
-        Ok(with_fp.into_iter().map(|(_, s)| s).collect())
+        Ok(with_fp.into_iter().map(|(_, _, s)| s).collect())
     }
 
     fn process_unit(
@@ -204,21 +222,11 @@ impl<'a> DwarfContext<'a> {
 
         let mut member = MemberLayout::new(name, type_name, offset, size).with_atomic(is_atomic);
 
-        let read_u64_attr = |attr: gimli::DwAt| -> Option<u64> {
-            match entry.attr_value(attr).ok().flatten()? {
-                AttributeValue::Udata(v) => Some(v),
-                AttributeValue::Data1(v) => Some(v as u64),
-                AttributeValue::Data2(v) => Some(v as u64),
-                AttributeValue::Data4(v) => Some(v as u64),
-                AttributeValue::Data8(v) => Some(v),
-                AttributeValue::Sdata(v) if v >= 0 => Some(v as u64),
-                _ => None,
-            }
-        };
-
-        let bit_size = read_u64_attr(gimli::DW_AT_bit_size);
-        let dwarf5_data_bit_offset = read_u64_attr(gimli::DW_AT_data_bit_offset);
-        let dwarf4_bit_offset = read_u64_attr(gimli::DW_AT_bit_offset);
+        let bit_size = read_u64_from_attr(entry.attr_value(gimli::DW_AT_bit_size).ok().flatten());
+        let dwarf5_data_bit_offset =
+            read_u64_from_attr(entry.attr_value(gimli::DW_AT_data_bit_offset).ok().flatten());
+        let dwarf4_bit_offset =
+            read_u64_from_attr(entry.attr_value(gimli::DW_AT_bit_offset).ok().flatten());
 
         member.bit_size = bit_size;
 
@@ -234,8 +242,9 @@ impl<'a> DwarfContext<'a> {
             // to the storage unit size.
             let container_offset = member.offset.or_else(|| {
                 let data_bit_offset = dwarf5_data_bit_offset?;
-                let start_byte = data_bit_offset / 8;
-                Some((start_byte / storage_bytes) * storage_bytes)
+                let start_byte = data_bit_offset.checked_div(8)?;
+                // storage_bytes > 0 is guaranteed by the outer if-let guard
+                start_byte.checked_div(storage_bytes)?.checked_mul(storage_bytes)
             });
 
             if member.offset.is_none() {
@@ -311,21 +320,16 @@ impl<'a> DwarfContext<'a> {
         unit: &Unit<DwarfSlice<'a>>,
         entry: &DebuggingInformationEntry<DwarfSlice<'a>>,
     ) -> Result<Option<SourceLocation>> {
-        let read_u64_attr = |attr: gimli::DwAt| -> Option<u64> {
-            match entry.attr_value(attr).ok().flatten()? {
-                AttributeValue::FileIndex(idx) => Some(idx),
-                AttributeValue::Udata(v) => Some(v),
-                AttributeValue::Data1(v) => Some(v as u64),
-                AttributeValue::Data2(v) => Some(v as u64),
-                AttributeValue::Data4(v) => Some(v as u64),
-                AttributeValue::Data8(v) => Some(v),
-                AttributeValue::Sdata(v) if v >= 0 => Some(v as u64),
-                _ => None,
-            }
+        let Some(file_index) =
+            read_u64_from_attr(entry.attr_value(gimli::DW_AT_decl_file).ok().flatten())
+        else {
+            return Ok(None);
         };
-
-        let Some(file_index) = read_u64_attr(gimli::DW_AT_decl_file) else { return Ok(None) };
-        let Some(line) = read_u64_attr(gimli::DW_AT_decl_line) else { return Ok(None) };
+        let Some(line) =
+            read_u64_from_attr(entry.attr_value(gimli::DW_AT_decl_line).ok().flatten())
+        else {
+            return Ok(None);
+        };
 
         // Try to resolve the file name from the line program header
         let file_name = self.resolve_file_name(unit, file_index).unwrap_or_else(|| {
