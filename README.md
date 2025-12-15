@@ -22,11 +22,29 @@ Catch layout regressions in CI before they ship.
 
 ## Installation
 
+### Pre-built binaries
+
+Download from [GitHub Releases](https://github.com/avifenesh/layout-audit/releases/latest):
+
+```bash
+# Linux (x86_64)
+curl -LO https://github.com/avifenesh/layout-audit/releases/latest/download/layout-audit-linux-x86_64
+chmod +x layout-audit-linux-x86_64
+sudo mv layout-audit-linux-x86_64 /usr/local/bin/layout-audit
+
+# macOS (Apple Silicon)
+curl -LO https://github.com/avifenesh/layout-audit/releases/latest/download/layout-audit-macos-aarch64
+chmod +x layout-audit-macos-aarch64
+sudo mv layout-audit-macos-aarch64 /usr/local/bin/layout-audit
+```
+
+### Via Cargo
+
 ```bash
 cargo install layout-audit
 ```
 
-Or build from source:
+### From source
 
 ```bash
 cargo build --release
