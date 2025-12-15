@@ -22,6 +22,7 @@ This file captures the issues found during a deep review + the changes made to f
 | 18-20 | Sixth pass: array overflow, BTreeSet, helper extraction | 3436dec, 970c2e0 |
 | 21-23 | Seventh pass: end_offset overflow, ZST alignment, into_owned | 97a7938 |
 | 24-27 | Eighth pass: expr.rs overflow, padding.rs u32, false_sharing.rs cast | 34691ab |
+| 28 | Ninth pass: main.rs warnings.len() u32 truncation | a123a30 |
 
 ## Environment and validation
 
@@ -689,6 +690,41 @@ For offsets > `i64::MAX`, the cast produces incorrect negative values due to sig
 - Use `saturating_sub` for the subtraction to handle edge cases
 
 Code: `src/analysis/false_sharing.rs`
+
+### Validation
+
+All 82 tests pass. `cargo clippy --all-targets -- -D warnings` is clean.
+
+---
+
+## Code Review Findings (Dec 16, 2025 - Ninth Pass)
+
+Additional issues found during continued code review.
+
+## Finding 28: main.rs warnings.len() u32 truncation
+
+### Issue identified
+
+Budget check for false sharing warnings cast `warnings.len()` directly to u32:
+```rust
+let warning_count = fs.warnings.len() as u32;
+```
+
+On 64-bit platforms, if `warnings.len() > u32::MAX`, this would silently truncate, causing the comparison against `max_fs` to produce incorrect results.
+
+### Fix
+
+- Clamp to `u32::MAX` before casting: `.min(u32::MAX as usize) as u32`
+
+Code: `src/main.rs`
+
+### False positives reviewed
+
+Two issues reported by code review were verified as false positives:
+
+1. **context.rs:241 bitfield underflow**: The guard `if end_bit <= storage_bits` (where `end_bit = raw_bit_offset + bit_size`) mathematically prevents underflow in the subsequent subtraction `storage_bits - raw_bit_offset - bit_size`.
+
+2. **context.rs:233 DWARF5 saturating_sub**: The use of `saturating_sub` is intentional defensive behavior. For malformed DWARF where `data_bit_offset < container_bits`, clamping to 0 provides a best-effort result rather than failing. The byte offset remains correct.
 
 ### Validation
 
