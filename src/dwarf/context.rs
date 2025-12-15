@@ -5,7 +5,7 @@ use gimli::{AttributeValue, DebuggingInformationEntry, Dwarf, Unit};
 
 use super::TypeResolver;
 use super::expr::{evaluate_member_offset, try_simple_offset};
-use super::read_u64_from_attr;
+use super::{debug_info_ref_to_unit_offset, read_u64_from_attr};
 
 pub struct DwarfContext<'a> {
     dwarf: &'a Dwarf<DwarfSlice<'a>>,
@@ -157,15 +157,11 @@ impl<'a> DwarfContext<'a> {
                 type_resolver.resolve_type(type_offset)
             }
             Ok(Some(AttributeValue::DebugInfoRef(debug_info_offset))) => {
-                // Convert section offset to unit offset.
-                // Use checked_sub to detect invalid cross-unit references (corruption).
-                if let Some(unit_debug_offset) = unit.header.offset().as_debug_info_offset() {
-                    if let Some(offset_val) = debug_info_offset.0.checked_sub(unit_debug_offset.0) {
-                        type_resolver.resolve_type(gimli::UnitOffset(offset_val))
-                    } else {
-                        // Invalid: debug_info_offset < unit_debug_offset (corrupted DWARF)
-                        Ok(("unknown".to_string(), None, false))
-                    }
+                // Use shared helper for cross-unit reference conversion.
+                if let Some(unit_offset) =
+                    debug_info_ref_to_unit_offset(debug_info_offset, &unit.header)
+                {
+                    type_resolver.resolve_type(unit_offset)
                 } else {
                     Ok(("unknown".to_string(), None, false))
                 }
