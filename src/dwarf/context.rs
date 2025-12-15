@@ -94,13 +94,11 @@ impl<'a> DwarfContext<'a> {
         filter: Option<&str>,
         type_resolver: &mut TypeResolver<'a, '_>,
     ) -> Result<Option<StructLayout>> {
-        let size = match entry.attr_value(gimli::DW_AT_byte_size) {
-            Ok(Some(AttributeValue::Udata(s))) => s,
-            Ok(Some(AttributeValue::Data1(s))) => s as u64,
-            Ok(Some(AttributeValue::Data2(s))) => s as u64,
-            Ok(Some(AttributeValue::Data4(s))) => s as u64,
-            Ok(Some(AttributeValue::Data8(s))) => s,
-            _ => return Ok(None), // Forward declaration or no size
+        // Use consolidated helper for attribute extraction (see read_u64_from_attr).
+        let Some(size) =
+            read_u64_from_attr(entry.attr_value(gimli::DW_AT_byte_size).ok().flatten())
+        else {
+            return Ok(None); // Forward declaration or no size
         };
 
         let name = self.get_die_name(unit, entry)?;
@@ -114,10 +112,7 @@ impl<'a> DwarfContext<'a> {
             return Ok(None);
         }
 
-        let alignment = match entry.attr_value(gimli::DW_AT_alignment) {
-            Ok(Some(AttributeValue::Udata(a))) => Some(a),
-            _ => None,
-        };
+        let alignment = read_u64_from_attr(entry.attr_value(gimli::DW_AT_alignment).ok().flatten());
 
         let mut layout = StructLayout::new(name, size, alignment);
         layout.source_location = self.get_source_location(unit, entry)?;
