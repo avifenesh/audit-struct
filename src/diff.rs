@@ -2,6 +2,10 @@ use crate::types::StructLayout;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 
+/// Penalty for matching structs with mismatched source locations.
+/// Large enough to dominate all other scoring factors, preventing cross-location matching.
+const LOCATION_MISMATCH_PENALTY: i64 = i64::MIN / 4;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DiffResult {
     pub added: Vec<StructSummary>,
@@ -62,6 +66,8 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
     let mut unchanged_count = 0;
 
     // Group by display name; allow duplicates and match them deterministically.
+    // IMPORTANT: Use BTreeMap (not HashMap) for deterministic iteration order.
+    // This ensures stable JSON output across runs. See AUDIT_FINDINGS.md Finding #1.
     let mut old_by_name: BTreeMap<String, Vec<&StructLayout>> = BTreeMap::new();
     let mut new_by_name: BTreeMap<String, Vec<&StructLayout>> = BTreeMap::new();
 
@@ -154,22 +160,19 @@ fn member_similarity_score(old: &StructLayout, new: &StructLayout) -> i64 {
     // If both have source locations and they disagree, heavily penalize to avoid cross-matching.
     if let (Some(ol), Some(nl)) = (location_key(old), location_key(new)) {
         if ol != nl {
-            return i64::MIN / 4;
+            return LOCATION_MISMATCH_PENALTY;
         }
     }
 
     let mut score: i64 = 0;
 
     // Prefer similar overall sizes/padding.
-    let size_delta = i64::try_from(new.size)
-        .unwrap_or(i64::MAX)
-        .saturating_sub(i64::try_from(old.size).unwrap_or(i64::MAX));
-    score = score.saturating_sub(size_delta.unsigned_abs() as i64);
+    // Use abs_diff() to avoid overflow when converting large u64 to i64.
+    let size_delta = old.size.abs_diff(new.size).min(i64::MAX as u64) as i64;
+    score = score.saturating_sub(size_delta);
 
-    let pad_delta = i64::try_from(new.metrics.padding_bytes)
-        .unwrap_or(i64::MAX)
-        .saturating_sub(i64::try_from(old.metrics.padding_bytes).unwrap_or(i64::MAX));
-    score = score.saturating_sub((pad_delta.unsigned_abs() as i64) / 2);
+    let pad_delta = old.metrics.padding_bytes.abs_diff(new.metrics.padding_bytes).min(i64::MAX as u64) as i64;
+    score = score.saturating_sub(pad_delta / 2);
 
     // Member-name overlap drives matching for same-name duplicates.
     let old_members: HashMap<&str, _> = old.members.iter().map(|m| (m.name.as_str(), m)).collect();
@@ -228,35 +231,31 @@ fn match_structs<'a>(
     }
 
     // 2) Deterministic greedy matching by similarity score.
-    let mut scored: Vec<(i64, usize, usize)> = Vec::new();
-    for (i, old_s) in old_group.iter().enumerate() {
-        if old_used[i] {
-            continue;
-        }
-        for (j, new_s) in new_group.iter().enumerate() {
-            if new_used[j] {
-                continue;
-            }
-            let score = member_similarity_score(old_s, new_s);
-            scored.push((score, i, j));
-        }
-    }
-
-    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)).then_with(|| a.2.cmp(&b.2)));
-
-    // If exactly one unpaired remains on each side, always pair them to preserve the baseline
-    // semantics for non-duplicate names (even if the shape changed significantly).
+    // First check if exactly one unpaired remains on each side - if so, pair them directly
+    // to preserve baseline semantics for non-duplicate names (avoids O(n*m) similarity calc).
     let remaining_old: Vec<usize> =
         old_used.iter().enumerate().filter_map(|(i, used)| (!*used).then_some(i)).collect();
     let remaining_new: Vec<usize> =
         new_used.iter().enumerate().filter_map(|(j, used)| (!*used).then_some(j)).collect();
+
     if remaining_old.len() == 1 && remaining_new.len() == 1 {
         let i = remaining_old[0];
         let j = remaining_new[0];
         old_used[i] = true;
         new_used[j] = true;
         pairs.push((old_group[i], new_group[j]));
-    } else {
+    } else if !remaining_old.is_empty() && !remaining_new.is_empty() {
+        // Build similarity scores only when needed.
+        let mut scored: Vec<(i64, usize, usize)> = Vec::new();
+        for &i in &remaining_old {
+            for &j in &remaining_new {
+                let score = member_similarity_score(old_group[i], new_group[j]);
+                scored.push((score, i, j));
+            }
+        }
+
+        scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)).then_with(|| a.2.cmp(&b.2)));
+
         // Require a positive score to avoid pairing completely unrelated duplicates.
         for (score, i, j) in scored {
             if score <= 0 {
@@ -298,12 +297,10 @@ fn kind_rank(kind: &MemberChangeKind) -> u8 {
 }
 
 fn diff_struct(old: &StructLayout, new: &StructLayout) -> Option<StructChange> {
-    let size_delta = i64::try_from(new.size)
-        .unwrap_or(i64::MAX)
-        .saturating_sub(i64::try_from(old.size).unwrap_or(i64::MAX));
-    let padding_delta = i64::try_from(new.metrics.padding_bytes)
-        .unwrap_or(i64::MAX)
-        .saturating_sub(i64::try_from(old.metrics.padding_bytes).unwrap_or(i64::MAX));
+    // Use saturating signed subtraction to handle large u64 values safely.
+    let size_delta = (new.size as i128 - old.size as i128).clamp(i64::MIN as i128, i64::MAX as i128) as i64;
+    let padding_delta = (new.metrics.padding_bytes as i128 - old.metrics.padding_bytes as i128)
+        .clamp(i64::MIN as i128, i64::MAX as i128) as i64;
 
     let mut member_changes = Vec::new();
 
