@@ -149,7 +149,10 @@ pub fn analyze_false_sharing(layout: &StructLayout, cache_line_size: u32) -> Fal
                 // gap_bytes = second.offset - (first.offset + first.size)
                 // Negative = overlap, Zero = adjacent, Positive = gap
                 let first_end = first.offset.saturating_add(first.size);
-                let gap_bytes = second.offset as i64 - first_end as i64;
+                // Safe conversion: cap values at i64::MAX before cast to avoid sign bit issues
+                let second_offset_i64 = second.offset.min(i64::MAX as u64) as i64;
+                let first_end_i64 = first_end.min(i64::MAX as u64) as i64;
+                let gap_bytes = second_offset_i64.saturating_sub(first_end_i64);
 
                 warnings.push(FalseSharingWarning {
                     member_a: first.name.clone(),

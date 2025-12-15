@@ -44,8 +44,12 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
     // Can't infer padding without at least one reliable span.
     if spans.is_empty() {
         let cache_line_size_u64 = cache_line_size as u64;
-        let cache_lines_spanned =
-            if layout.size > 0 { layout.size.div_ceil(cache_line_size_u64) as u32 } else { 0 };
+        // Clamp to u32::MAX to prevent truncation overflow for huge struct sizes.
+        let cache_lines_spanned = if layout.size > 0 {
+            layout.size.div_ceil(cache_line_size_u64).min(u32::MAX as u64) as u32
+        } else {
+            0
+        };
 
         layout.metrics = LayoutMetrics {
             total_size: layout.size,
@@ -106,8 +110,12 @@ pub fn analyze_layout(layout: &mut StructLayout, cache_line_size: u32) {
         if layout.size > 0 { (padding_bytes as f64 / layout.size as f64) * 100.0 } else { 0.0 };
 
     let cache_line_size_u64 = cache_line_size as u64;
-    let cache_lines_spanned =
-        if layout.size > 0 { layout.size.div_ceil(cache_line_size_u64) as u32 } else { 0 };
+    // Clamp to u32::MAX to prevent truncation overflow for huge struct sizes.
+    let cache_lines_spanned = if layout.size > 0 {
+        layout.size.div_ceil(cache_line_size_u64).min(u32::MAX as u64) as u32
+    } else {
+        0
+    };
 
     let total_cache_bytes = cache_lines_spanned as u64 * cache_line_size_u64;
     let cache_line_density = if total_cache_bytes > 0 {

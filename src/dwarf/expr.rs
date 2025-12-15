@@ -21,11 +21,12 @@ pub fn evaluate_member_offset(
                 match result[0].location {
                     gimli::Location::Address { address } => return Ok(Some(address)),
                     gimli::Location::Value { value } => {
-                        // addr_mask for 64-bit addresses
-                        let addr_mask = if encoding.address_size == 8 {
-                            !0u64
-                        } else {
-                            (1u64 << (encoding.address_size * 8)) - 1
+                        // Address mask depends on address size. Handle invalid sizes gracefully.
+                        let addr_mask = match encoding.address_size {
+                            0 => return Ok(None), // Invalid address size
+                            8 => !0u64,
+                            size if size < 8 => (1u64 << (size * 8)) - 1,
+                            _ => return Ok(None), // Address size > 8 is invalid
                         };
                         match value.to_u64(addr_mask) {
                             Ok(v) => return Ok(Some(v)),
@@ -57,27 +58,24 @@ pub fn evaluate_member_offset(
 }
 
 /// Try to extract a simple constant offset from an expression.
-/// This handles the most common case: DW_OP_plus_uconst N
+/// This handles common cases: DW_OP_plus_uconst N or DW_OP_constu N
 pub fn try_simple_offset(
     expr: Expression<DwarfSlice<'_>>,
     encoding: gimli::Encoding,
 ) -> Option<u64> {
     let mut ops = expr.operations(encoding);
 
-    // Check for simple DW_OP_plus_uconst pattern
-    if let Ok(Some(Operation::PlusConstant { value })) = ops.next()
-        && ops.next().ok().flatten().is_none()
-    {
-        return Some(value);
+    // Check for single-operation patterns (plus_uconst or unsigned constant)
+    let value = match ops.next().ok().flatten()? {
+        Operation::PlusConstant { value } => value,
+        Operation::UnsignedConstant { value } => value,
+        _ => return None,
+    };
+
+    // Ensure no additional operations follow
+    if ops.next().ok().flatten().is_some() {
+        return None;
     }
 
-    // Check for DW_OP_constu pattern
-    let mut ops = expr.operations(encoding);
-    if let Ok(Some(Operation::UnsignedConstant { value })) = ops.next()
-        && ops.next().ok().flatten().is_none()
-    {
-        return Some(value);
-    }
-
-    None
+    Some(value)
 }
