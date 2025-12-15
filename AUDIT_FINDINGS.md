@@ -19,6 +19,7 @@ This file captures the issues found during a deep review + the changes made to f
 | 12 | optimize.rs: bitfield tracking, no silent data loss | 6d1d017 |
 | 13 | context.rs: consolidate attribute parsing | e88d7f3 |
 | 14-16 | Fifth pass: overflow, clone, code consolidation | 85214cf, 688b9bb |
+| 18-19 | Sixth pass: array overflow, BTreeSet, helper extraction | 3436dec, 970c2e0 |
 
 ## Environment and validation
 
@@ -512,6 +513,55 @@ Code: `src/dwarf/context.rs`
 - Reduced code duplication and ensured consistent attribute handling
 
 Code: `src/dwarf/mod.rs`, `src/dwarf/context.rs`, `src/dwarf/types.rs`
+
+### Validation
+
+All 82 tests pass. `cargo clippy --all-targets -- -D warnings` is clean.
+
+---
+
+## Code Review Findings (Dec 16, 2025 - Sixth Pass)
+
+Additional issues found during continued code review.
+
+## Finding 18: types.rs array upper_bound overflow
+
+### Issue identified
+
+When computing array count from `DW_AT_upper_bound`, the code used `upper + 1` without overflow protection. If corrupted DWARF contains `upper == u64::MAX`, this would overflow to 0.
+
+### Fix
+
+- Use `checked_add(1)` to return `None` on overflow instead of wrapping to 0
+
+Code: `src/dwarf/types.rs`
+
+## Finding 19: diff.rs BTreeMap<String, ()> instead of BTreeSet
+
+### Issue identified
+
+Code used `BTreeMap<String, ()>` as a workaround for a set, which is semantically unclear and requires unnecessary string cloning.
+
+### Fix
+
+- Replace with `BTreeSet<&str>` using iterator chaining
+- More efficient (avoids cloning) and clearer intent
+
+Code: `src/diff.rs`
+
+## Finding 20: Duplicated DebugInfoRef conversion logic
+
+### Issue identified
+
+The logic for converting `DebugInfoRef` (section offset) to `UnitOffset` (unit-relative offset) was duplicated in types.rs and context.rs with ~15 lines of nearly identical code.
+
+### Fix
+
+- Extract `debug_info_ref_to_unit_offset` helper function in `dwarf/mod.rs`
+- Generic over gimli::Reader for reusability
+- Both modules now use the shared helper
+
+Code: `src/dwarf/mod.rs`, `src/dwarf/types.rs`, `src/dwarf/context.rs`
 
 ### Validation
 
