@@ -15,6 +15,9 @@ This file captures the issues found during a deep review + the changes made to f
 | 8 | optimize.rs: bitfield grouping, bit_offset, zero-size | f1e01cf |
 | 9 | diff.rs: scoring constants, BTreeMap, count_delta | e2acfb3 |
 | 10 | context.rs: type resolution helper, checked arithmetic | 8151a56 |
+| 11 | types.rs: checked_sub for cross-unit refs | e5e8b99 |
+| 12 | optimize.rs: bitfield tracking, no silent data loss | 6d1d017 |
+| 13 | context.rs: consolidate attribute parsing | e88d7f3 |
 
 ## Environment and validation
 
@@ -395,4 +398,57 @@ Code: `src/dwarf/context.rs`
 ### Validation
 
 All 81 tests pass. `cargo clippy --all-targets -- -D warnings` is clean.
+
+---
+
+## Code Review Findings (Dec 15, 2025 - Fourth Pass)
+
+Additional issues found during continued code review.
+
+## Finding 11: types.rs cross-unit reference handling
+
+### Issue identified
+
+`saturating_sub` was used to compute unit-relative offset from debug_info_offset. If debug_info_offset < unit_debug_offset (corrupted DWARF), this silently returns 0 instead of detecting the error.
+
+### Fix
+
+- Changed `saturating_sub` to `checked_sub`
+- Return `Ok(None)` for invalid cross-unit references instead of silently producing offset 0
+
+Code: `src/dwarf/types.rs`
+
+## Finding 12: optimize.rs bitfield tracking bug
+
+### Issues identified
+
+1. **Bitfield members silently lost**: Members in bitfield groups with missing metadata were not being tracked
+2. Only successfully converted indices were marked as processed, but unconverted bitfield indices weren't verified
+
+### Fix
+
+- Track `converted_bitfield_indices` separately from `processed_indices`
+- After processing all bitfield groups, verify all bitfield indices are accounted for
+- Add missing bitfields to `skipped_members` with "(bitfield, missing info)" annotation
+- Added test case `test_bitfield_with_missing_metadata_not_lost`
+
+Code: `src/analysis/optimize.rs`
+
+## Finding 13: context.rs attribute parsing duplication
+
+### Issue identified
+
+`process_struct_entry` had duplicated attribute parsing code for `DW_AT_byte_size` and `DW_AT_alignment` that matched multiple `AttributeValue` variants manually, despite `read_u64_from_attr` helper existing.
+
+### Fix
+
+- Replaced manual match patterns with `read_u64_from_attr` calls
+- Removed ~10 lines of duplicated code
+- Consistent handling of all AttributeValue forms (Sdata, Data1-8, Udata, FileIndex)
+
+Code: `src/dwarf/context.rs`
+
+### Validation
+
+All 82 tests pass. `cargo clippy --all-targets -- -D warnings` is clean.
 
