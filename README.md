@@ -192,7 +192,7 @@ Summary: 10 useful bytes, 6 padding bytes (37.5%), cache density: 15.6%
 Use layout-audit directly in your workflows:
 
 ```yaml
-- uses: avifenesh/layout-audit@v0.3.3
+- uses: avifenesh/layout-audit@v0.4.0
   with:
     binary: ./target/debug/myapp
     command: inspect
