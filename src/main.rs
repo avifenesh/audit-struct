@@ -19,6 +19,7 @@ struct InspectConfig<'a> {
     cache_line_size: u32,
     pretty: bool,
     warn_false_sharing: bool,
+    include_go_runtime: bool,
 }
 
 fn main() -> Result<()> {
@@ -36,6 +37,7 @@ fn main() -> Result<()> {
             cache_line,
             pretty,
             warn_false_sharing,
+            include_go_runtime,
         } => {
             let config = InspectConfig {
                 binary_path: &binary,
@@ -48,17 +50,27 @@ fn main() -> Result<()> {
                 cache_line_size: cache_line,
                 pretty,
                 warn_false_sharing,
+                include_go_runtime,
             };
             run_inspect(&config)?;
         }
-        Commands::Diff { old, new, filter, output, cache_line, fail_on_regression } => {
-            let has_regression = run_diff(&old, &new, filter.as_deref(), output, cache_line)?;
+        Commands::Diff {
+            old,
+            new,
+            filter,
+            output,
+            cache_line,
+            fail_on_regression,
+            include_go_runtime,
+        } => {
+            let has_regression =
+                run_diff(&old, &new, filter.as_deref(), output, cache_line, include_go_runtime)?;
             if fail_on_regression && has_regression {
                 std::process::exit(1);
             }
         }
-        Commands::Check { binary, config, cache_line } => {
-            run_check(&binary, &config, cache_line)?;
+        Commands::Check { binary, config, cache_line, include_go_runtime } => {
+            run_check(&binary, &config, cache_line, include_go_runtime)?;
         }
         Commands::Suggest {
             binary,
@@ -70,6 +82,7 @@ fn main() -> Result<()> {
             max_align,
             sort_by_savings,
             no_color,
+            include_go_runtime,
         } => {
             run_suggest(
                 &binary,
@@ -81,6 +94,7 @@ fn main() -> Result<()> {
                 max_align,
                 sort_by_savings,
                 no_color,
+                include_go_runtime,
             )?;
         }
     }
@@ -96,8 +110,9 @@ fn run_inspect(config: &InspectConfig<'_>) -> Result<()> {
 
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts =
-        dwarf.find_structs(config.filter).context("Failed to parse struct layouts")?;
+    let mut layouts = dwarf
+        .find_structs(config.filter, config.include_go_runtime)
+        .context("Failed to parse struct layouts")?;
 
     if layouts.is_empty() {
         if let Some(f) = config.filter {
@@ -171,6 +186,7 @@ fn run_diff(
     filter: Option<&str>,
     output_format: OutputFormat,
     cache_line_size: u32,
+    include_go_runtime: bool,
 ) -> Result<bool> {
     let old_binary = BinaryData::load(old_path)
         .with_context(|| format!("Failed to load old binary: {}", old_path.display()))?;
@@ -183,8 +199,8 @@ fn run_diff(
     let old_dwarf = DwarfContext::new(&old_loaded);
     let new_dwarf = DwarfContext::new(&new_loaded);
 
-    let mut old_layouts = old_dwarf.find_structs(filter)?;
-    let mut new_layouts = new_dwarf.find_structs(filter)?;
+    let mut old_layouts = old_dwarf.find_structs(filter, include_go_runtime)?;
+    let mut new_layouts = new_dwarf.find_structs(filter, include_go_runtime)?;
 
     for layout in &mut old_layouts {
         analyze_layout(layout, cache_line_size);
@@ -277,7 +293,12 @@ fn print_diff_table(diff: &layout_audit::DiffResult) {
     );
 }
 
-fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Result<()> {
+fn run_check(
+    binary_path: &Path,
+    config_path: &Path,
+    cache_line_size: u32,
+    include_go_runtime: bool,
+) -> Result<()> {
     if !config_path.exists() {
         bail!(
             "Config file not found: {}\n\nCreate a .layout-audit.yaml with budget constraints:\n\n\
@@ -307,7 +328,7 @@ fn run_check(binary_path: &Path, config_path: &Path, cache_line_size: u32) -> Re
     let loaded = binary.load_dwarf().context("Failed to load DWARF debug info")?;
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf.find_structs(None)?;
+    let mut layouts = dwarf.find_structs(None, include_go_runtime)?;
     for layout in &mut layouts {
         analyze_layout(layout, cache_line_size);
     }
@@ -534,6 +555,7 @@ fn run_suggest(
     max_align: u64,
     sort_by_savings: bool,
     no_color: bool,
+    include_go_runtime: bool,
 ) -> Result<()> {
     let binary = BinaryData::load(binary_path)
         .with_context(|| format!("Failed to load binary: {}", binary_path.display()))?;
@@ -541,7 +563,8 @@ fn run_suggest(
     let loaded = binary.load_dwarf().context("Failed to load DWARF debug info")?;
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf.find_structs(filter).context("Failed to parse struct layouts")?;
+    let mut layouts =
+        dwarf.find_structs(filter, include_go_runtime).context("Failed to parse struct layouts")?;
 
     if layouts.is_empty() {
         if let Some(f) = filter {

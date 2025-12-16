@@ -300,6 +300,25 @@ jobs:
 - C: Full support
 - C++: Full support including templates
 - Rust: Full support
+- Go: Full support (runtime types filtered by default)
+
+### Go Binaries
+
+Go binaries include DWARF debug info by default. For full debug information:
+
+```bash
+go build -gcflags=all="-N -l" -o myapp
+```
+
+Go runtime internal types (`runtime.*`, `sync.*`, etc.) are filtered out by default. Use `--include-go-runtime` to show them:
+
+```bash
+# Show only user-defined structs (default)
+layout-audit inspect ./myapp --filter main.
+
+# Include runtime types
+layout-audit inspect ./myapp --include-go-runtime
+```
 
 ## License
 

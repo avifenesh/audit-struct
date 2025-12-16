@@ -7,6 +7,37 @@ use super::TypeResolver;
 use super::expr::{evaluate_member_offset, try_simple_offset};
 use super::{debug_info_ref_to_unit_offset, read_u64_from_attr};
 
+/// Check if a type name is a Go runtime internal type that should be filtered.
+/// These are compiler/runtime-generated types not useful for layout analysis.
+pub fn is_go_internal_type(name: &str) -> bool {
+    // Go runtime and standard library internals
+    name.starts_with("runtime.")
+        || name.starts_with("runtime/")
+        || name.starts_with("internal/")
+        || name.starts_with("reflect.")
+        || name.starts_with("sync.")
+        || name.starts_with("sync/")
+        || name.starts_with("syscall.")
+        || name.starts_with("unsafe.")
+        // Go internal symbol separator (middle dot)
+        || name.contains('\u{00B7}')
+        // Runtime type descriptors
+        || name.starts_with("type:")
+        || name.starts_with("type..")
+        // Go map/channel internal types
+        || name.starts_with("hash<")
+        || name.starts_with("bucket<")
+        || name.starts_with("hmap")
+        || name.starts_with("hchan")
+        || name.starts_with("waitq")
+        || name.starts_with("sudog")
+        // Goroutine internals
+        || name == "g"
+        || name == "m"
+        || name == "p"
+        || name.starts_with("stack")
+}
+
 pub struct DwarfContext<'a> {
     dwarf: &'a Dwarf<DwarfSlice<'a>>,
     address_size: u8,
@@ -18,7 +49,15 @@ impl<'a> DwarfContext<'a> {
         Self { dwarf: &loaded.dwarf, address_size: loaded.address_size, endian: loaded.endian }
     }
 
-    pub fn find_structs(&self, filter: Option<&str>) -> Result<Vec<StructLayout>> {
+    /// Find all structs in the binary.
+    ///
+    /// - `filter`: Optional substring filter for struct names
+    /// - `include_go_runtime`: If false, Go runtime internal types are filtered out
+    pub fn find_structs(
+        &self,
+        filter: Option<&str>,
+        include_go_runtime: bool,
+    ) -> Result<Vec<StructLayout>> {
         let mut structs = Vec::new();
         let mut units = self.dwarf.units();
 
@@ -30,7 +69,7 @@ impl<'a> DwarfContext<'a> {
                 .unit(header)
                 .map_err(|e| Error::Dwarf(format!("Failed to parse unit: {}", e)))?;
 
-            self.process_unit(&unit, filter, &mut structs)?;
+            self.process_unit(&unit, filter, include_go_runtime, &mut structs)?;
         }
 
         // DWARF can contain duplicate identical type entries (e.g., across units or due to
@@ -49,6 +88,7 @@ impl<'a> DwarfContext<'a> {
         &self,
         unit: &Unit<DwarfSlice<'a>>,
         filter: Option<&str>,
+        include_go_runtime: bool,
         structs: &mut Vec<StructLayout>,
     ) -> Result<()> {
         let mut type_resolver = TypeResolver::new(self.dwarf, unit, self.address_size);
@@ -61,9 +101,13 @@ impl<'a> DwarfContext<'a> {
                 continue;
             }
 
-            if let Some(layout) =
-                self.process_struct_entry(unit, entry, filter, &mut type_resolver)?
-            {
+            if let Some(layout) = self.process_struct_entry(
+                unit,
+                entry,
+                filter,
+                include_go_runtime,
+                &mut type_resolver,
+            )? {
                 structs.push(layout);
             }
         }
@@ -76,6 +120,7 @@ impl<'a> DwarfContext<'a> {
         unit: &Unit<DwarfSlice<'a>>,
         entry: &DebuggingInformationEntry<DwarfSlice<'a>>,
         filter: Option<&str>,
+        include_go_runtime: bool,
         type_resolver: &mut TypeResolver<'a, '_>,
     ) -> Result<Option<StructLayout>> {
         // Use consolidated helper for attribute extraction (see read_u64_from_attr).
@@ -91,6 +136,11 @@ impl<'a> DwarfContext<'a> {
             None => return Ok(None),              // Anonymous struct
             _ => return Ok(None),
         };
+
+        // Filter Go runtime internal types unless explicitly included
+        if !include_go_runtime && is_go_internal_type(&name) {
+            return Ok(None);
+        }
 
         if filter.is_some_and(|f| !name.contains(f)) {
             return Ok(None);
@@ -389,5 +439,41 @@ fn struct_fingerprint(s: &StructLayout) -> StructFingerprint {
                 is_atomic: m.is_atomic,
             })
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_go_internal_type() {
+        // Should be filtered
+        assert!(is_go_internal_type("runtime.g"));
+        assert!(is_go_internal_type("runtime.m"));
+        assert!(is_go_internal_type("runtime.stack"));
+        assert!(is_go_internal_type("runtime/internal/atomic.Uint64"));
+        assert!(is_go_internal_type("internal/abi.Type"));
+        assert!(is_go_internal_type("reflect.Value"));
+        assert!(is_go_internal_type("sync.Mutex"));
+        assert!(is_go_internal_type("sync/atomic.Int64"));
+        assert!(is_go_internal_type("syscall.Stat_t"));
+        assert!(is_go_internal_type("unsafe.Pointer"));
+        assert!(is_go_internal_type("type:main.MyStruct"));
+        assert!(is_go_internal_type("type..hash.main.MyStruct"));
+        assert!(is_go_internal_type("hmap"));
+        assert!(is_go_internal_type("hchan"));
+        assert!(is_go_internal_type("g"));
+        assert!(is_go_internal_type("m"));
+        assert!(is_go_internal_type("p"));
+        assert!(is_go_internal_type("stackObject"));
+
+        // Should NOT be filtered (user types)
+        assert!(!is_go_internal_type("main.Order"));
+        assert!(!is_go_internal_type("main.Config"));
+        assert!(!is_go_internal_type("mypackage.MyStruct"));
+        assert!(!is_go_internal_type("github.com/user/pkg.Type"));
+        assert!(!is_go_internal_type("Order"));
+        assert!(!is_go_internal_type("Config"));
     }
 }

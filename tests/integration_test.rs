@@ -60,7 +60,8 @@ fn test_parse_simple_struct() {
     let loaded = binary.load_dwarf().expect("Failed to load DWARF");
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf.find_structs(Some("NoPadding")).expect("Failed to parse structs");
+    let mut layouts =
+        dwarf.find_structs(Some("NoPadding"), false).expect("Failed to parse structs");
 
     assert_eq!(layouts.len(), 1);
     let layout = &mut layouts[0];
@@ -84,7 +85,8 @@ fn test_detect_padding() {
     let loaded = binary.load_dwarf().expect("Failed to load DWARF");
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf.find_structs(Some("InternalPadding")).expect("Failed to parse structs");
+    let mut layouts =
+        dwarf.find_structs(Some("InternalPadding"), false).expect("Failed to parse structs");
 
     assert_eq!(layouts.len(), 1);
     let layout = &mut layouts[0];
@@ -108,7 +110,8 @@ fn test_tail_padding() {
     let loaded = binary.load_dwarf().expect("Failed to load DWARF");
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf.find_structs(Some("TailPadding")).expect("Failed to parse structs");
+    let mut layouts =
+        dwarf.find_structs(Some("TailPadding"), false).expect("Failed to parse structs");
 
     assert_eq!(layouts.len(), 1);
     let layout = &mut layouts[0];
@@ -133,7 +136,7 @@ fn test_nested_struct() {
     let loaded = binary.load_dwarf().expect("Failed to load DWARF");
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf.find_structs(Some("Outer")).expect("Failed to parse structs");
+    let mut layouts = dwarf.find_structs(Some("Outer"), false).expect("Failed to parse structs");
 
     assert_eq!(layouts.len(), 1);
     let layout = &mut layouts[0];
@@ -156,7 +159,8 @@ fn test_cache_line_metrics() {
     let loaded = binary.load_dwarf().expect("Failed to load DWARF");
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf.find_structs(Some("NoPadding")).expect("Failed to parse structs");
+    let mut layouts =
+        dwarf.find_structs(Some("NoPadding"), false).expect("Failed to parse structs");
 
     assert_eq!(layouts.len(), 1);
     let layout = &mut layouts[0];
@@ -506,7 +510,8 @@ fn test_array_member_size() {
     let loaded = binary.load_dwarf().expect("Failed to load DWARF");
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf.find_structs(Some("WithArray")).expect("Failed to parse structs");
+    let mut layouts =
+        dwarf.find_structs(Some("WithArray"), false).expect("Failed to parse structs");
 
     assert!(
         !layouts.is_empty(),
@@ -540,7 +545,8 @@ fn test_bitfield_layout_does_not_show_full_padding() {
     let loaded = binary.load_dwarf().expect("Failed to load DWARF");
     let dwarf = DwarfContext::new(&loaded);
 
-    let mut layouts = dwarf.find_structs(Some("BitfieldFlags")).expect("Failed to parse structs");
+    let mut layouts =
+        dwarf.find_structs(Some("BitfieldFlags"), false).expect("Failed to parse structs");
     assert_eq!(layouts.len(), 1);
 
     let layout = &mut layouts[0];
@@ -1497,4 +1503,116 @@ fn test_cpp_template_padding_detection() {
     // This template has 50% padding due to alignment
     let padding_pct = triple["metrics"]["padding_percentage"].as_f64().unwrap();
     assert!(padding_pct > 40.0, "Triple<char, int, char> should have significant padding");
+}
+
+// ============================================================================
+// Go language tests
+// ============================================================================
+
+/// Get path to Go test fixture, or None if not found.
+fn get_go_fixture_path() -> Option<std::path::PathBuf> {
+    // Linux ELF
+    let linux_path = std::path::Path::new("tests/fixtures/bin/test_go");
+    if linux_path.exists() {
+        return Some(linux_path.to_path_buf());
+    }
+
+    // Windows PE
+    let windows_path = std::path::Path::new("tests/fixtures/bin/test_go.exe");
+    if windows_path.exists() {
+        return Some(windows_path.to_path_buf());
+    }
+
+    // macOS (Go doesn't use dSYM, debug info is embedded)
+    None
+}
+
+#[test]
+fn test_go_struct_parsing() {
+    let path = match get_go_fixture_path() {
+        Some(p) => p,
+        None => {
+            eprintln!("Go fixture not found, skipping test");
+            return;
+        }
+    };
+
+    let binary = BinaryData::load(&path).expect("Failed to load Go binary");
+    let loaded = binary.load_dwarf().expect("Failed to load DWARF");
+    let dwarf = DwarfContext::new(&loaded);
+
+    // Filter by "main." to only get user-defined structs
+    let layouts = dwarf.find_structs(Some("main."), false).expect("Failed to parse structs");
+
+    // Should find PoorlyAligned, WellAligned, etc.
+    assert!(!layouts.is_empty(), "Should find Go structs with 'main.' prefix");
+
+    // Check that we found specific structs
+    let struct_names: Vec<&str> = layouts.iter().map(|l| l.name.as_str()).collect();
+    assert!(
+        struct_names.iter().any(|n| n.contains("PoorlyAligned")),
+        "Should find main.PoorlyAligned struct"
+    );
+}
+
+#[test]
+fn test_go_runtime_filtering() {
+    let path = match get_go_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let binary = BinaryData::load(&path).expect("Failed to load Go binary");
+    let loaded = binary.load_dwarf().expect("Failed to load DWARF");
+    let dwarf = DwarfContext::new(&loaded);
+
+    // Without Go runtime filtering (include_go_runtime = true)
+    let all_layouts = dwarf.find_structs(None, true).expect("Failed to parse structs");
+
+    // With Go runtime filtering (include_go_runtime = false)
+    let filtered_layouts = dwarf.find_structs(None, false).expect("Failed to parse structs");
+
+    // Filtered should have fewer structs (no runtime.*, sync.*, etc.)
+    assert!(
+        filtered_layouts.len() < all_layouts.len(),
+        "Filtered layouts ({}) should be fewer than unfiltered ({})",
+        filtered_layouts.len(),
+        all_layouts.len()
+    );
+
+    // Check that runtime types are filtered out
+    for layout in &filtered_layouts {
+        assert!(
+            !layout.name.starts_with("runtime."),
+            "runtime.* types should be filtered: {}",
+            layout.name
+        );
+        assert!(
+            !layout.name.starts_with("sync."),
+            "sync.* types should be filtered: {}",
+            layout.name
+        );
+    }
+}
+
+#[test]
+fn test_go_padding_detection() {
+    let path = match get_go_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let binary = BinaryData::load(&path).expect("Failed to load Go binary");
+    let loaded = binary.load_dwarf().expect("Failed to load DWARF");
+    let dwarf = DwarfContext::new(&loaded);
+
+    let mut layouts = dwarf.find_structs(Some("PoorlyAligned"), false).expect("Failed to parse");
+
+    assert!(!layouts.is_empty(), "Should find PoorlyAligned");
+
+    let layout = &mut layouts[0];
+    analyze_layout(layout, 64);
+
+    // PoorlyAligned has internal padding due to field ordering
+    assert!(layout.metrics.padding_bytes > 0, "PoorlyAligned should have padding");
 }

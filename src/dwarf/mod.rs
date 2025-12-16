@@ -2,7 +2,7 @@ mod context;
 mod expr;
 mod types;
 
-pub use context::DwarfContext;
+pub use context::{DwarfContext, is_go_internal_type};
 pub use types::TypeResolver;
 
 use crate::loader::DwarfSlice;

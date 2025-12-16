@@ -61,6 +61,10 @@ pub enum Commands {
         /// Warn about potential false sharing between atomic members on the same cache line
         #[arg(long)]
         warn_false_sharing: bool,
+
+        /// Include Go runtime internal types (filtered by default)
+        #[arg(long)]
+        include_go_runtime: bool,
     },
 
     /// Compare struct layouts between two binaries
@@ -88,6 +92,10 @@ pub enum Commands {
         /// Exit with error code 1 if any regressions found (size or padding increased)
         #[arg(long)]
         fail_on_regression: bool,
+
+        /// Include Go runtime internal types (filtered by default)
+        #[arg(long)]
+        include_go_runtime: bool,
     },
 
     /// Check struct layouts against budget constraints
@@ -103,6 +111,10 @@ pub enum Commands {
         /// Cache line size in bytes (must be > 0)
         #[arg(long, default_value = "64", value_parser = clap::value_parser!(u32).range(1..))]
         cache_line: u32,
+
+        /// Include Go runtime internal types (filtered by default)
+        #[arg(long)]
+        include_go_runtime: bool,
     },
 
     /// Suggest optimal field ordering to minimize padding
@@ -142,6 +154,10 @@ pub enum Commands {
         /// Disable colored output
         #[arg(long)]
         no_color: bool,
+
+        /// Include Go runtime internal types (filtered by default)
+        #[arg(long)]
+        include_go_runtime: bool,
     },
 }
 
