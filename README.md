@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/crates/l/layout-audit.svg)](https://github.com/avifenesh/layout-audit#license)
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-layout--audit-blue?logo=github)](https://github.com/marketplace/actions/layout-audit)
 
-**Detect memory layout inefficiencies in your C/C++/Rust binaries.**
+**Detect memory layout inefficiencies in your C/C++/Rust/Go binaries.**
 
 `layout-audit` parses DWARF debugging information to visualize the physical layout of data structures, detect padding holes, and analyze cache line efficiency.
 
@@ -192,7 +192,7 @@ Summary: 10 useful bytes, 6 padding bytes (37.5%), cache density: 15.6%
 Use layout-audit directly in your workflows:
 
 ```yaml
-- uses: avifenesh/layout-audit@v0.4.0
+- uses: avifenesh/layout-audit@v0.4.1
   with:
     binary: ./target/debug/myapp
     command: inspect
@@ -239,7 +239,7 @@ jobs:
         run: cargo build
 
       - name: Analyze memory layouts
-        uses: avifenesh/layout-audit@v0.3.3
+        uses: avifenesh/layout-audit@v0.4.1
         with:
           binary: ./target/debug/myapp
           command: inspect
@@ -251,7 +251,7 @@ jobs:
 
 ```yaml
       - name: Check struct budgets
-        uses: avifenesh/layout-audit@v0.3.3
+        uses: avifenesh/layout-audit@v0.4.1
         with:
           binary: ./target/debug/myapp
           command: check
@@ -262,7 +262,7 @@ jobs:
 
 ```yaml
       - name: Compare layouts
-        uses: avifenesh/layout-audit@v0.3.3
+        uses: avifenesh/layout-audit@v0.4.1
         with:
           binary: ./target/debug/myapp
           baseline: ./target-baseline/debug/myapp
@@ -275,7 +275,7 @@ jobs:
 ```yaml
       - name: Analyze layouts
         id: layout
-        uses: avifenesh/layout-audit@v0.3.3
+        uses: avifenesh/layout-audit@v0.4.1
         with:
           binary: ./target/debug/myapp
           output: json
