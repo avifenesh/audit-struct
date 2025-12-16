@@ -65,7 +65,8 @@ pub fn is_go_internal_type(name: &str) -> bool {
         return false; // Empty string is not internal
     };
 
-    match first {
+    // Check prefixes grouped by first byte for performance
+    let matches_prefix = match first {
         b'r' => {
             name.starts_with("runtime.")
                 || name.starts_with("runtime/")
@@ -100,9 +101,11 @@ pub fn is_go_internal_type(name: &str) -> bool {
         b'f' => name.starts_with("funcval"),
         b'n' => name.starts_with("noalg."),
         b'[' => name.starts_with("[]") || name.starts_with("[]*"),
-        // Middle dot check - requires full string scan but rare in practice
-        _ => name.contains('\u{00B7}'),
-    }
+        _ => false,
+    };
+
+    // Middle dot check as fallback (Go uses · for unexported identifiers)
+    matches_prefix || name.contains('\u{00B7}')
 }
 
 /// Returns the list of Go internal type prefixes (for testing).
@@ -609,19 +612,41 @@ mod tests {
 
     #[test]
     fn test_go_internal_prefixes_consistency() {
-        // Verify all prefixes in the constant are tested above
+        // Verify all prefixes in the constant are covered by the match statement
         let prefixes = go_internal_prefixes();
         assert!(prefixes.len() >= 30, "Should have comprehensive prefix list");
 
         // Each prefix should correctly filter matching types
+        // This catches if a prefix is added to the constant but not the match
         for prefix in prefixes {
             let test_name = format!("{}TestType", prefix);
             assert!(
                 is_go_internal_type(&test_name),
-                "Prefix '{}' should filter '{}'",
+                "Prefix '{}' should filter '{}' - check match statement coverage",
                 prefix,
                 test_name
             );
         }
+    }
+
+    #[test]
+    fn test_go_internal_type_edge_cases() {
+        // Single-character names matching first byte should NOT be filtered
+        assert!(!is_go_internal_type("r")); // Not "runtime."
+        assert!(!is_go_internal_type("s")); // Not "sync."
+        assert!(!is_go_internal_type("i")); // Not "internal/"
+        assert!(!is_go_internal_type("g")); // Not "go."
+        assert!(!is_go_internal_type("t")); // Not "type:"
+        assert!(!is_go_internal_type("[")); // Not "[]"
+
+        // Complex nested types
+        assert!(is_go_internal_type("[][]int")); // Nested slice
+        assert!(is_go_internal_type("[]*[]int")); // Pointer to slice
+
+        // Multiple middle dots
+        assert!(is_go_internal_type("type\u{00B7}inner\u{00B7}func"));
+
+        // Type with middle dot but also matching prefix
+        assert!(is_go_internal_type("runtime\u{00B7}internal"));
     }
 }

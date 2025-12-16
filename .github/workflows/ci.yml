@@ -83,7 +83,7 @@ jobs:
 
       - name: Verify Go runtime filtering
         run: |
-          set -e
+          set -eo pipefail
           # Filtered count (default - excludes runtime types)
           FILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go -o json | jq '.structs | length') || {
             echo "ERROR: Failed to get filtered struct count"
@@ -151,7 +151,7 @@ jobs:
 
       - name: Verify Go runtime filtering
         run: |
-          set -e
+          set -eo pipefail
           FILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go -o json | jq '.structs | length') || {
             echo "ERROR: Failed to get filtered struct count"
             exit 1
