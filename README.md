@@ -300,7 +300,7 @@ jobs:
 - C: Full support
 - C++: Full support including templates
 - Rust: Full support
-- Go: Full support (runtime types filtered by default)
+- Go: Full support on Linux/macOS (runtime types filtered by default; Windows not supported - Go uses PDB, not DWARF)
 
 ### Go Binaries
 

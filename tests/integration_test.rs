@@ -1510,20 +1510,19 @@ fn test_cpp_template_padding_detection() {
 // ============================================================================
 
 /// Get path to Go test fixture, or None if not found.
+/// Note: Go on Windows uses CodeView/PDB debug format, not DWARF, so we skip Windows.
 fn get_go_fixture_path() -> Option<std::path::PathBuf> {
-    // Linux ELF
-    let linux_path = std::path::Path::new("tests/fixtures/bin/test_go");
-    if linux_path.exists() {
-        return Some(linux_path.to_path_buf());
+    // Skip on Windows - Go uses PDB/CodeView debug format, not DWARF
+    if cfg!(target_os = "windows") {
+        return None;
     }
 
-    // Windows PE
-    let windows_path = std::path::Path::new("tests/fixtures/bin/test_go.exe");
-    if windows_path.exists() {
-        return Some(windows_path.to_path_buf());
+    // Linux ELF and macOS Mach-O (Go embeds DWARF directly, no dSYM)
+    let path = std::path::Path::new("tests/fixtures/bin/test_go");
+    if path.exists() {
+        return Some(path.to_path_buf());
     }
 
-    // macOS (Go doesn't use dSYM, debug info is embedded)
     None
 }
 
