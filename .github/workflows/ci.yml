@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  GO_VERSION: '1.21'
 
 jobs:
   check:
@@ -31,7 +32,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Compile test fixtures
         run: |
@@ -52,7 +53,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Build
         run: cargo build
@@ -80,6 +81,19 @@ jobs:
       - name: Run on Go fixture
         run: cargo run -- inspect tests/fixtures/bin/test_go --filter main.
 
+      - name: Verify Go runtime filtering
+        run: |
+          # Filtered count (default - excludes runtime types)
+          FILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go -o json | jq '.structs | length')
+          # Unfiltered count (includes runtime types)
+          UNFILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go --include-go-runtime -o json | jq '.structs | length')
+          echo "Filtered: $FILTERED structs, Unfiltered: $UNFILTERED structs"
+          if [ "$UNFILTERED" -le "$FILTERED" ]; then
+            echo "ERROR: --include-go-runtime should show more types than filtered"
+            exit 1
+          fi
+          echo "Go runtime filtering verified successfully"
+
   test-macos:
     runs-on: macos-latest
     steps:
@@ -88,7 +102,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Build
         run: cargo build
@@ -117,6 +131,17 @@ jobs:
 
       - name: Run on Go fixture
         run: cargo run -- inspect tests/fixtures/bin/test_go --filter main.
+
+      - name: Verify Go runtime filtering
+        run: |
+          FILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go -o json | jq '.structs | length')
+          UNFILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go --include-go-runtime -o json | jq '.structs | length')
+          echo "Filtered: $FILTERED structs, Unfiltered: $UNFILTERED structs"
+          if [ "$UNFILTERED" -le "$FILTERED" ]; then
+            echo "ERROR: --include-go-runtime should show more types than filtered"
+            exit 1
+          fi
+          echo "Go runtime filtering verified successfully"
 
   test-windows:
     runs-on: windows-latest

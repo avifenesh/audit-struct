@@ -7,56 +7,68 @@ use super::TypeResolver;
 use super::expr::{evaluate_member_offset, try_simple_offset};
 use super::{debug_info_ref_to_unit_offset, read_u64_from_attr};
 
+/// Prefixes for Go runtime internal types that should be filtered.
+/// Grouped by category for maintainability.
+const GO_INTERNAL_PREFIXES: &[&str] = &[
+    // Runtime and standard library
+    "runtime.",
+    "runtime/",
+    "internal/",
+    "reflect.",
+    "sync.",
+    "sync/",
+    "syscall.",
+    "unsafe.",
+    // Compiler-generated prefixes
+    "go.",
+    "go:",
+    // Type descriptors
+    "type:",
+    "type..",
+    "type.*[",
+    // Map/channel internals
+    "hash<",
+    "bucket<",
+    "hmap",
+    "hchan",
+    "waitq<",
+    "sudog",
+    // Interface dispatch
+    "itab",
+    "iface",
+    "eface",
+    // Function values
+    "funcval",
+    // Generics (Go 1.18+)
+    "go.shape.",
+    "groupReference<",
+    // Stack-related runtime types
+    "stackObject",
+    "stackScan",
+    "stackfreelist",
+    "stkframe",
+    // Slice representations
+    "[]",
+    "[]*",
+    // No-algorithm types
+    "noalg.",
+];
+
 /// Check if a type name is a Go runtime internal type that should be filtered.
 /// These are compiler/runtime-generated types not useful for layout analysis.
-/// Filters: runtime.*, internal/*, reflect.*, sync.*, syscall.*, unsafe.*,
-/// and various Go compiler-generated types (type descriptors, interface tables, etc.)
 pub fn is_go_internal_type(name: &str) -> bool {
-    // Go runtime and standard library internals
-    name.starts_with("runtime.")
-        || name.starts_with("runtime/")
-        || name.starts_with("internal/")
-        || name.starts_with("reflect.")
-        || name.starts_with("sync.")
-        || name.starts_with("sync/")
-        || name.starts_with("syscall.")
-        || name.starts_with("unsafe.")
-        // Go uses middle dot (·) for unexported identifiers and method receivers in DWARF
-        // Examples: "(*T)·method", "pkg·unexported" - these are compiler internals
-        || name.contains('\u{00B7}')
-        // Compiler-generated type prefixes
-        || name.starts_with("go.")
-        || name.starts_with("go:")
-        // Runtime type descriptors
-        || name.starts_with("type:")
-        || name.starts_with("type..")
-        || name.starts_with("type.*[")
-        // Go map/channel internal types
-        || name.starts_with("hash<")
-        || name.starts_with("bucket<")
-        || name.starts_with("hmap")
-        || name.starts_with("hchan")
-        || name.starts_with("waitq<")
-        || name.starts_with("sudog")
-        // Interface dispatch internals
-        || name.starts_with("itab")
-        || name.starts_with("iface")
-        || name.starts_with("eface")
-        // Function value representation
-        || name.starts_with("funcval")
-        // Generic shape types (Go 1.18+ generics)
-        || name.starts_with("go.shape.")
-        || name.starts_with("groupReference<")
-        // Stack-related runtime types (specific patterns, not broad prefix)
-        || name.starts_with("stackObject")
-        || name.starts_with("stackScan")
-        || name.starts_with("stackfreelist")
-        || name.starts_with("stkframe")
-        // Slice type representations (e.g., "[]int", "[]*runtime.g")
-        || name.starts_with("[]")
-        || name.starts_with("[]*")
-        // noalg types (no algorithm - compiler internal)
-        || name.starts_with("noalg.")
+    // Fast path: check middle dot first (Go uses · for unexported identifiers)
+    if name.contains('\u{00B7}') {
+        return true;
+    }
+    // Short-circuit on first match
+    GO_INTERNAL_PREFIXES.iter().any(|p| name.starts_with(p))
+}
+
+/// Returns the list of Go internal type prefixes (for testing).
+#[cfg(test)]
+pub(crate) fn go_internal_prefixes() -> &'static [&'static str] {
+    GO_INTERNAL_PREFIXES
 }
 
 pub struct DwarfContext<'a> {
@@ -518,6 +530,11 @@ mod tests {
         // Compiler-generated - should be filtered
         assert!(is_go_internal_type("go:itab.*os.File,io.Reader"));
 
+        // Middle dot (·) - Go unexported identifiers - should be filtered
+        assert!(is_go_internal_type("pkg\u{00B7}unexported"));
+        assert!(is_go_internal_type("(*T)\u{00B7}method"));
+        assert!(is_go_internal_type("main\u{00B7}init"));
+
         // Should NOT be filtered (user types)
         assert!(!is_go_internal_type("main.Order"));
         assert!(!is_go_internal_type("main.Config"));
@@ -530,5 +547,30 @@ mod tests {
         assert!(!is_go_internal_type("MyStack"));
         assert!(!is_go_internal_type("StackFrame"));
         assert!(!is_go_internal_type("HashMap"));
+        // False-positive edge cases - contain keywords but missing separators
+        assert!(!is_go_internal_type("runtimeConfig")); // No dot after "runtime"
+        assert!(!is_go_internal_type("syncronizer")); // Contains "sync" but not "sync."
+        assert!(!is_go_internal_type("go_util")); // Underscore, not dot/colon
+        assert!(!is_go_internal_type("MyStackFrame")); // Contains "Stack" but not at start
+        assert!(!is_go_internal_type("reflector")); // Contains "reflect" but not "reflect."
+        assert!(!is_go_internal_type("internalConfig")); // Starts with "internal" but not "internal/"
+    }
+
+    #[test]
+    fn test_go_internal_prefixes_consistency() {
+        // Verify all prefixes in the constant are tested above
+        let prefixes = go_internal_prefixes();
+        assert!(prefixes.len() >= 30, "Should have comprehensive prefix list");
+
+        // Each prefix should correctly filter matching types
+        for prefix in prefixes {
+            let test_name = format!("{}TestType", prefix);
+            assert!(
+                is_go_internal_type(&test_name),
+                "Prefix '{}' should filter '{}'",
+                prefix,
+                test_name
+            );
+        }
     }
 }
