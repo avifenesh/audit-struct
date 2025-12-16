@@ -9,6 +9,9 @@ use super::{debug_info_ref_to_unit_offset, read_u64_from_attr};
 
 /// Prefixes for Go runtime internal types that should be filtered.
 /// Grouped by category for maintainability.
+/// Note: The actual filtering uses an optimized first-byte match in `is_go_internal_type()`.
+/// This constant serves as documentation and is used by tests to verify consistency.
+#[cfg(test)]
 const GO_INTERNAL_PREFIXES: &[&str] = &[
     // Runtime and standard library
     "runtime.",
@@ -57,12 +60,49 @@ const GO_INTERNAL_PREFIXES: &[&str] = &[
 /// Check if a type name is a Go runtime internal type that should be filtered.
 /// These are compiler/runtime-generated types not useful for layout analysis.
 pub fn is_go_internal_type(name: &str) -> bool {
-    // Fast path: check middle dot first (Go uses · for unexported identifiers)
-    if name.contains('\u{00B7}') {
-        return true;
+    // Fast path: check first byte to filter by common prefix groups
+    let Some(&first) = name.as_bytes().first() else {
+        return false; // Empty string is not internal
+    };
+
+    match first {
+        b'r' => {
+            name.starts_with("runtime.")
+                || name.starts_with("runtime/")
+                || name.starts_with("reflect.")
+        }
+        b's' => {
+            name.starts_with("sync.")
+                || name.starts_with("sync/")
+                || name.starts_with("syscall.")
+                || name.starts_with("sudog")
+                || name.starts_with("stackObject")
+                || name.starts_with("stackScan")
+                || name.starts_with("stackfreelist")
+                || name.starts_with("stkframe")
+        }
+        b'i' => {
+            name.starts_with("internal/") || name.starts_with("itab") || name.starts_with("iface")
+        }
+        b'g' => {
+            name.starts_with("go.")
+                || name.starts_with("go:")
+                || name.starts_with("groupReference<")
+        }
+        b't' => {
+            name.starts_with("type:") || name.starts_with("type..") || name.starts_with("type.*[")
+        }
+        b'u' => name.starts_with("unsafe."),
+        b'h' => name.starts_with("hash<") || name.starts_with("hmap") || name.starts_with("hchan"),
+        b'b' => name.starts_with("bucket<"),
+        b'w' => name.starts_with("waitq<"),
+        b'e' => name.starts_with("eface"),
+        b'f' => name.starts_with("funcval"),
+        b'n' => name.starts_with("noalg."),
+        b'[' => name.starts_with("[]") || name.starts_with("[]*"),
+        // Middle dot check - requires full string scan but rare in practice
+        _ => name.contains('\u{00B7}'),
     }
-    // Short-circuit on first match
-    GO_INTERNAL_PREFIXES.iter().any(|p| name.starts_with(p))
 }
 
 /// Returns the list of Go internal type prefixes (for testing).
@@ -554,6 +594,17 @@ mod tests {
         assert!(!is_go_internal_type("MyStackFrame")); // Contains "Stack" but not at start
         assert!(!is_go_internal_type("reflector")); // Contains "reflect" but not "reflect."
         assert!(!is_go_internal_type("internalConfig")); // Starts with "internal" but not "internal/"
+
+        // Fixed-size arrays should NOT be filtered (only slices)
+        assert!(!is_go_internal_type("[5]int")); // Fixed array, not slice
+        assert!(!is_go_internal_type("[10]MyStruct")); // User array type
+        assert!(!is_go_internal_type("[3]*MyStruct")); // Array of pointers
+
+        // Generic edge cases - verify exact patterns required
+        assert!(!is_go_internal_type("groupReference")); // No angle bracket (needs "groupReference<")
+
+        // Empty string edge case
+        assert!(!is_go_internal_type("")); // Empty should not crash or filter
     }
 
     #[test]

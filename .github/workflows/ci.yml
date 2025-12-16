@@ -83,11 +83,28 @@ jobs:
 
       - name: Verify Go runtime filtering
         run: |
+          set -e
           # Filtered count (default - excludes runtime types)
-          FILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go -o json | jq '.structs | length')
+          FILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go -o json | jq '.structs | length') || {
+            echo "ERROR: Failed to get filtered struct count"
+            exit 1
+          }
           # Unfiltered count (includes runtime types)
-          UNFILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go --include-go-runtime -o json | jq '.structs | length')
+          UNFILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go --include-go-runtime -o json | jq '.structs | length') || {
+            echo "ERROR: Failed to get unfiltered struct count"
+            exit 1
+          }
+          # Validate jq output is numeric
+          if ! [[ "$FILTERED" =~ ^[0-9]+$ ]] || ! [[ "$UNFILTERED" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: Invalid struct counts - FILTERED='$FILTERED', UNFILTERED='$UNFILTERED'"
+            exit 1
+          fi
           echo "Filtered: $FILTERED structs, Unfiltered: $UNFILTERED structs"
+          # Verify minimum thresholds
+          if [ "$FILTERED" -lt 3 ]; then
+            echo "ERROR: Expected at least 3 filtered structs (user types), got $FILTERED"
+            exit 1
+          fi
           if [ "$UNFILTERED" -le "$FILTERED" ]; then
             echo "ERROR: --include-go-runtime should show more types than filtered"
             exit 1
@@ -134,9 +151,24 @@ jobs:
 
       - name: Verify Go runtime filtering
         run: |
-          FILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go -o json | jq '.structs | length')
-          UNFILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go --include-go-runtime -o json | jq '.structs | length')
+          set -e
+          FILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go -o json | jq '.structs | length') || {
+            echo "ERROR: Failed to get filtered struct count"
+            exit 1
+          }
+          UNFILTERED=$(cargo run -- inspect tests/fixtures/bin/test_go --include-go-runtime -o json | jq '.structs | length') || {
+            echo "ERROR: Failed to get unfiltered struct count"
+            exit 1
+          }
+          if ! [[ "$FILTERED" =~ ^[0-9]+$ ]] || ! [[ "$UNFILTERED" =~ ^[0-9]+$ ]]; then
+            echo "ERROR: Invalid struct counts - FILTERED='$FILTERED', UNFILTERED='$UNFILTERED'"
+            exit 1
+          fi
           echo "Filtered: $FILTERED structs, Unfiltered: $UNFILTERED structs"
+          if [ "$FILTERED" -lt 3 ]; then
+            echo "ERROR: Expected at least 3 filtered structs (user types), got $FILTERED"
+            exit 1
+          fi
           if [ "$UNFILTERED" -le "$FILTERED" ]; then
             echo "ERROR: --include-go-runtime should show more types than filtered"
             exit 1
