@@ -1616,3 +1616,252 @@ fn test_go_padding_detection() {
     // PoorlyAligned has internal padding due to field ordering
     assert!(layout.metrics.padding_bytes > 0, "PoorlyAligned should have padding");
 }
+
+#[test]
+fn test_go_cli_inspect_json() {
+    let path = match get_go_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "inspect",
+            path.to_str().unwrap(),
+            "--filter",
+            "main.PoorlyAligned",
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run inspect on Go binary");
+
+    assert!(
+        output.status.success(),
+        "Inspect should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+    let structs = parsed["structs"].as_array().unwrap();
+
+    assert!(!structs.is_empty(), "Should find Go struct in JSON output");
+    assert!(
+        structs[0]["name"].as_str().unwrap().contains("PoorlyAligned"),
+        "Should find PoorlyAligned"
+    );
+}
+
+#[test]
+fn test_go_cli_include_runtime_flag() {
+    let path = match get_go_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Without --include-go-runtime (default filtering)
+    let filtered = std::process::Command::new("cargo")
+        .args(["run", "--", "inspect", path.to_str().unwrap(), "-o", "json"])
+        .output()
+        .expect("Failed to run inspect");
+
+    // With --include-go-runtime
+    let unfiltered = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "inspect",
+            path.to_str().unwrap(),
+            "-o",
+            "json",
+            "--include-go-runtime",
+        ])
+        .output()
+        .expect("Failed to run inspect with --include-go-runtime");
+
+    assert!(filtered.status.success() && unfiltered.status.success());
+
+    let filtered_json: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&filtered.stdout)).unwrap();
+    let unfiltered_json: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&unfiltered.stdout)).unwrap();
+
+    let filtered_count = filtered_json["structs"].as_array().unwrap().len();
+    let unfiltered_count = unfiltered_json["structs"].as_array().unwrap().len();
+
+    assert!(
+        unfiltered_count > filtered_count,
+        "--include-go-runtime should show more structs: {} > {}",
+        unfiltered_count,
+        filtered_count
+    );
+}
+
+#[test]
+fn test_go_suggest_command() {
+    let path = match get_go_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "suggest",
+            path.to_str().unwrap(),
+            "--filter",
+            "main.PoorlyAligned",
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run suggest on Go binary");
+
+    assert!(
+        output.status.success(),
+        "Suggest should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+
+    assert!(parsed["suggestions"].is_array(), "Should have suggestions array");
+    let suggestions = parsed["suggestions"].as_array().unwrap();
+    assert!(!suggestions.is_empty(), "Should find PoorlyAligned for optimization");
+
+    // PoorlyAligned should have savings potential
+    let suggestion = &suggestions[0];
+    assert!(
+        suggestion["name"].as_str().unwrap().contains("PoorlyAligned"),
+        "Should suggest PoorlyAligned"
+    );
+}
+
+#[test]
+fn test_go_diff_command() {
+    let path = match get_go_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Diff same binary (should show no changes)
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "diff",
+            path.to_str().unwrap(),
+            path.to_str().unwrap(),
+            "--filter",
+            "main.",
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run diff on Go binary");
+
+    assert!(
+        output.status.success(),
+        "Diff should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+
+    // Same binary should have no changes
+    assert!(parsed["added"].as_array().unwrap().is_empty(), "No added structs");
+    assert!(parsed["removed"].as_array().unwrap().is_empty(), "No removed structs");
+    assert!(parsed["changed"].as_array().unwrap().is_empty(), "No changed structs");
+    assert!(parsed["unchanged_count"].as_u64().unwrap() > 0, "Should have unchanged structs");
+}
+
+#[test]
+fn test_go_check_command() {
+    let path = match get_go_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Create config that should pass for WellAligned
+    let config = create_temp_config(
+        r#"
+budgets:
+  "main.WellAligned":
+    max_size: 32
+    max_padding: 8
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check on Go binary");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(
+        output.status.success(),
+        "Check should pass: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_go_check_budget_violation() {
+    let path = match get_go_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Create config that should fail for PoorlyAligned (it has significant padding)
+    let config = create_temp_config(
+        r#"
+budgets:
+  "main.PoorlyAligned":
+    max_padding: 0
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "check", path.to_str().unwrap(), "--config", config.to_str().unwrap()])
+        .output()
+        .expect("Failed to run check on Go binary");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Check should fail for PoorlyAligned with max_padding: 0");
+}
+
+#[test]
+fn test_go_well_aligned_vs_poorly_aligned() {
+    let path = match get_go_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let binary = BinaryData::load(&path).expect("Failed to load Go binary");
+    let loaded = binary.load_dwarf().expect("Failed to load DWARF");
+    let dwarf = DwarfContext::new(&loaded);
+
+    let mut poorly = dwarf.find_structs(Some("PoorlyAligned"), false).expect("Failed");
+    let mut well = dwarf.find_structs(Some("WellAligned"), false).expect("Failed");
+
+    assert!(!poorly.is_empty() && !well.is_empty(), "Should find both structs");
+
+    analyze_layout(&mut poorly[0], 64);
+    analyze_layout(&mut well[0], 64);
+
+    // WellAligned should have less or equal padding than PoorlyAligned
+    assert!(
+        well[0].metrics.padding_bytes <= poorly[0].metrics.padding_bytes,
+        "WellAligned ({} padding) should have <= padding than PoorlyAligned ({} padding)",
+        well[0].metrics.padding_bytes,
+        poorly[0].metrics.padding_bytes
+    );
+}
