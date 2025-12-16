@@ -47,11 +47,59 @@ type Flags struct {
 	value      uint32
 }
 
+//go:noinline
+func usePoorlyAligned(p *PoorlyAligned) uint64 {
+	return p.bigValue + uint64(p.medium) + uint64(p.small)
+}
+
+//go:noinline
+func useWellAligned(w *WellAligned) uint64 {
+	return w.bigValue + uint64(w.medium) + uint64(w.small)
+}
+
+//go:noinline
+func useWithSlice(s *WithSlice) int {
+	if len(s.items) > 0 {
+		return s.count + s.items[0]
+	}
+	return s.count
+}
+
+//go:noinline
+func useOuter(o *Outer) int32 {
+	return o.inner.x + o.inner.y + int32(o.prefix) + int32(o.suffix)
+}
+
+//go:noinline
+func useWithPointer(w *WithPointer) int32 {
+	if w.ptr != nil {
+		return w.value + int32(*w.ptr)
+	}
+	return w.value
+}
+
+//go:noinline
+func useFlags(f *Flags) uint32 {
+	var v uint32
+	if f.a {
+		v += 1
+	}
+	if f.b {
+		v += 2
+	}
+	return v + f.value
+}
+
+var globalResult uint64
+
 func main() {
-	_ = PoorlyAligned{}
-	_ = WellAligned{}
-	_ = WithSlice{}
-	_ = Outer{}
-	_ = WithPointer{}
-	_ = Flags{}
+	p := &PoorlyAligned{flag: true, bigValue: 42, small: 1, medium: 100}
+	w := &WellAligned{bigValue: 42, medium: 100, small: 1, flag: true}
+	s := &WithSlice{count: 5, items: []int{1, 2, 3}}
+	o := &Outer{prefix: 'a', inner: Inner{x: 10, y: 20}, suffix: 'z'}
+	ptr := &WithPointer{tag: 'x', ptr: new(int), value: 50}
+	f := &Flags{a: true, b: false, c: true, d: false, value: 99}
+
+	globalResult = usePoorlyAligned(p) + useWellAligned(w) + uint64(useWithSlice(s)) +
+		uint64(useOuter(o)) + uint64(useWithPointer(ptr)) + uint64(useFlags(f))
 }
