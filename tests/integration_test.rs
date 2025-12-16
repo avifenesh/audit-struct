@@ -1579,19 +1579,65 @@ fn test_go_runtime_filtering() {
         all_layouts.len()
     );
 
-    // Check that runtime types are filtered out
+    // Verify that runtime types exist in unfiltered (proving they were actually filtered)
+    let has_runtime = all_layouts.iter().any(|l| l.name.starts_with("runtime."));
+    assert!(has_runtime, "Unfiltered should contain runtime.* types to validate filtering");
+
+    // Check that filtered layouts don't contain any Go internal patterns
+    let internal_prefixes = [
+        "runtime.",
+        "runtime/",
+        "internal/",
+        "reflect.",
+        "sync.",
+        "sync/",
+        "syscall.",
+        "unsafe.",
+        "go.",
+        "go:",
+        "type:",
+        "type..",
+        "hash<",
+        "bucket<",
+        "hmap",
+        "hchan",
+        "waitq<",
+        "sudog",
+        "itab",
+        "iface",
+        "eface",
+        "funcval",
+        "go.shape.",
+        "groupReference<",
+        "stackObject",
+        "stackScan",
+        "stackfreelist",
+        "stkframe",
+        "[]",
+        "[]*",
+        "noalg.",
+    ];
+
     for layout in &filtered_layouts {
+        for prefix in &internal_prefixes {
+            assert!(
+                !layout.name.starts_with(prefix),
+                "{} types should be filtered: {}",
+                prefix,
+                layout.name
+            );
+        }
+        // Check for middle dot (Go internal separator)
         assert!(
-            !layout.name.starts_with("runtime."),
-            "runtime.* types should be filtered: {}",
-            layout.name
-        );
-        assert!(
-            !layout.name.starts_with("sync."),
-            "sync.* types should be filtered: {}",
+            !layout.name.contains('\u{00B7}'),
+            "Types with middle dot should be filtered: {}",
             layout.name
         );
     }
+
+    // Verify user types are preserved
+    let has_user_types = filtered_layouts.iter().any(|l| l.name.starts_with("main."));
+    assert!(has_user_types, "Filtered should preserve user types like main.*");
 }
 
 #[test]

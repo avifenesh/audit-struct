@@ -64,6 +64,12 @@ jobs:
           gcc -g -o tests/fixtures/bin/test_modified tests/fixtures/test_modified.c
           g++ -std=c++17 -g -o tests/fixtures/bin/test_cpp_templates tests/fixtures/test_cpp_templates.cpp
           go build -gcflags=all="-N -l" -o tests/fixtures/bin/test_go tests/fixtures/test_go.go
+          # Verify Go binary has DWARF debug info
+          if ! readelf --debug-dump=info tests/fixtures/bin/test_go 2>/dev/null | grep -q DW_TAG; then
+            echo "ERROR: No DWARF debug info found in Go binary"
+            exit 1
+          fi
+          echo "Go binary has DWARF debug info"
 
       - name: Run tests
         run: cargo test

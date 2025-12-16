@@ -9,6 +9,8 @@ use super::{debug_info_ref_to_unit_offset, read_u64_from_attr};
 
 /// Check if a type name is a Go runtime internal type that should be filtered.
 /// These are compiler/runtime-generated types not useful for layout analysis.
+/// Filters: runtime.*, internal/*, reflect.*, sync.*, syscall.*, unsafe.*,
+/// and various Go compiler-generated types (type descriptors, interface tables, etc.)
 pub fn is_go_internal_type(name: &str) -> bool {
     // Go runtime and standard library internals
     name.starts_with("runtime.")
@@ -19,23 +21,42 @@ pub fn is_go_internal_type(name: &str) -> bool {
         || name.starts_with("sync/")
         || name.starts_with("syscall.")
         || name.starts_with("unsafe.")
-        // Go internal symbol separator (middle dot)
+        // Go uses middle dot (·) for unexported identifiers and method receivers in DWARF
+        // Examples: "(*T)·method", "pkg·unexported" - these are compiler internals
         || name.contains('\u{00B7}')
+        // Compiler-generated type prefixes
+        || name.starts_with("go.")
+        || name.starts_with("go:")
         // Runtime type descriptors
         || name.starts_with("type:")
         || name.starts_with("type..")
+        || name.starts_with("type.*[")
         // Go map/channel internal types
         || name.starts_with("hash<")
         || name.starts_with("bucket<")
         || name.starts_with("hmap")
         || name.starts_with("hchan")
-        || name.starts_with("waitq")
+        || name.starts_with("waitq<")
         || name.starts_with("sudog")
-        // Goroutine internals
-        || name == "g"
-        || name == "m"
-        || name == "p"
-        || name.starts_with("stack")
+        // Interface dispatch internals
+        || name.starts_with("itab")
+        || name.starts_with("iface")
+        || name.starts_with("eface")
+        // Function value representation
+        || name.starts_with("funcval")
+        // Generic shape types (Go 1.18+ generics)
+        || name.starts_with("go.shape.")
+        || name.starts_with("groupReference<")
+        // Stack-related runtime types (specific patterns, not broad prefix)
+        || name.starts_with("stackObject")
+        || name.starts_with("stackScan")
+        || name.starts_with("stackfreelist")
+        || name.starts_with("stkframe")
+        // Slice type representations (e.g., "[]int", "[]*runtime.g")
+        || name.starts_with("[]")
+        || name.starts_with("[]*")
+        // noalg types (no algorithm - compiler internal)
+        || name.starts_with("noalg.")
 }
 
 pub struct DwarfContext<'a> {
@@ -448,7 +469,7 @@ mod tests {
 
     #[test]
     fn test_is_go_internal_type() {
-        // Should be filtered
+        // Runtime packages - should be filtered
         assert!(is_go_internal_type("runtime.g"));
         assert!(is_go_internal_type("runtime.m"));
         assert!(is_go_internal_type("runtime.stack"));
@@ -459,21 +480,55 @@ mod tests {
         assert!(is_go_internal_type("sync/atomic.Int64"));
         assert!(is_go_internal_type("syscall.Stat_t"));
         assert!(is_go_internal_type("unsafe.Pointer"));
+
+        // Type descriptors - should be filtered
         assert!(is_go_internal_type("type:main.MyStruct"));
         assert!(is_go_internal_type("type..hash.main.MyStruct"));
+        assert!(is_go_internal_type("type.*[10]int"));
+
+        // Map/channel internals - should be filtered
         assert!(is_go_internal_type("hmap"));
         assert!(is_go_internal_type("hchan"));
-        assert!(is_go_internal_type("g"));
-        assert!(is_go_internal_type("m"));
-        assert!(is_go_internal_type("p"));
+        assert!(is_go_internal_type("hchan<int>"));
+        assert!(is_go_internal_type("waitq<bool>"));
+        assert!(is_go_internal_type("hash<string,int>"));
+        assert!(is_go_internal_type("bucket<string,int>"));
+
+        // Interface dispatch - should be filtered
+        assert!(is_go_internal_type("itab"));
+        assert!(is_go_internal_type("iface"));
+        assert!(is_go_internal_type("eface"));
+
+        // Stack-related runtime types - should be filtered
         assert!(is_go_internal_type("stackObject"));
+        assert!(is_go_internal_type("stackScan"));
+        assert!(is_go_internal_type("stkframe"));
+
+        // Generic shape types - should be filtered
+        assert!(is_go_internal_type("go.shape.string"));
+        assert!(is_go_internal_type("groupReference<int32,unsafe.Pointer>"));
+
+        // Slice representations - should be filtered
+        assert!(is_go_internal_type("[]int"));
+        assert!(is_go_internal_type("[]*runtime.g"));
+
+        // noalg types - should be filtered
+        assert!(is_go_internal_type("noalg.map.group[string]bool"));
+
+        // Compiler-generated - should be filtered
+        assert!(is_go_internal_type("go:itab.*os.File,io.Reader"));
 
         // Should NOT be filtered (user types)
         assert!(!is_go_internal_type("main.Order"));
         assert!(!is_go_internal_type("main.Config"));
+        assert!(!is_go_internal_type("main.PoorlyAligned"));
         assert!(!is_go_internal_type("mypackage.MyStruct"));
         assert!(!is_go_internal_type("github.com/user/pkg.Type"));
         assert!(!is_go_internal_type("Order"));
         assert!(!is_go_internal_type("Config"));
+        // User types that might look like internals but aren't
+        assert!(!is_go_internal_type("MyStack"));
+        assert!(!is_go_internal_type("StackFrame"));
+        assert!(!is_go_internal_type("HashMap"));
     }
 }
