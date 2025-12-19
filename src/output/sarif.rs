@@ -213,6 +213,12 @@ impl SarifFormatter {
     }
 }
 
+impl Default for SarifFormatter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn rule_id_for_kind(kind: CheckViolationKind) -> &'static str {
     match kind {
         CheckViolationKind::MaxSize => RULE_BUDGET_SIZE,
