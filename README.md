@@ -3,6 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/v/layout-audit.svg)](https://crates.io/crates/layout-audit)
 [![Downloads](https://img.shields.io/crates/d/layout-audit.svg)](https://crates.io/crates/layout-audit)
 [![CI](https://github.com/avifenesh/layout-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/avifenesh/layout-audit/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/github/actions/workflow/status/avifenesh/layout-audit/ci.yml?label=coverage&branch=main&job=coverage)](https://github.com/avifenesh/layout-audit/actions/workflows/ci.yml)
 [![License](https://img.shields.io/crates/l/layout-audit.svg)](https://github.com/avifenesh/layout-audit#license)
 [![GitHub Marketplace](https://img.shields.io/badge/Marketplace-layout--audit-blue?logo=github)](https://github.com/marketplace/actions/layout-audit)
 
