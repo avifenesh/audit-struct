@@ -1,9 +1,9 @@
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 use layout_audit::{
-    BinaryData, Cli, Commands, DwarfContext, JsonFormatter, OutputFormat, SortField,
-    SuggestJsonFormatter, SuggestTableFormatter, TableFormatter, analyze_false_sharing,
-    analyze_layout, diff_layouts, optimize_layout,
+    BinaryData, CheckViolation, CheckViolationKind, Cli, Commands, DwarfContext, JsonFormatter,
+    OutputFormat, SarifFormatter, SortField, SuggestJsonFormatter, SuggestTableFormatter,
+    TableFormatter, analyze_false_sharing, analyze_layout, diff_layouts, optimize_layout,
 };
 use std::path::Path;
 
@@ -63,14 +63,21 @@ fn main() -> Result<()> {
             fail_on_regression,
             include_go_runtime,
         } => {
-            let has_regression =
-                run_diff(&old, &new, filter.as_deref(), output, cache_line, include_go_runtime)?;
+            let has_regression = run_diff(
+                &old,
+                &new,
+                filter.as_deref(),
+                output,
+                cache_line,
+                fail_on_regression,
+                include_go_runtime,
+            )?;
             if fail_on_regression && has_regression {
                 std::process::exit(1);
             }
         }
-        Commands::Check { binary, config, cache_line, include_go_runtime } => {
-            run_check(&binary, &config, cache_line, include_go_runtime)?;
+        Commands::Check { binary, config, output, cache_line, include_go_runtime } => {
+            run_check(&binary, &config, output, cache_line, include_go_runtime)?;
         }
         Commands::Suggest {
             binary,
@@ -173,6 +180,10 @@ fn run_inspect(config: &InspectConfig<'_>) -> Result<()> {
             let formatter = JsonFormatter::new(config.pretty);
             formatter.format(&layouts)
         }
+        OutputFormat::Sarif => {
+            let formatter = SarifFormatter::new();
+            formatter.format_inspect(&layouts)
+        }
     };
 
     println!("{}", output_str);
@@ -186,6 +197,7 @@ fn run_diff(
     filter: Option<&str>,
     output_format: OutputFormat,
     cache_line_size: u32,
+    fail_on_regression: bool,
     include_go_runtime: bool,
 ) -> Result<bool> {
     let old_binary = BinaryData::load(old_path)
@@ -217,6 +229,10 @@ fn run_diff(
         }
         OutputFormat::Table => {
             print_diff_table(&diff);
+        }
+        OutputFormat::Sarif => {
+            let formatter = SarifFormatter::new();
+            println!("{}", formatter.format_diff(&diff, fail_on_regression));
         }
     }
 
@@ -296,6 +312,7 @@ fn print_diff_table(diff: &layout_audit::DiffResult) {
 fn run_check(
     binary_path: &Path,
     config_path: &Path,
+    output_format: OutputFormat,
     cache_line_size: u32,
     include_go_runtime: bool,
 ) -> Result<()> {
@@ -346,7 +363,7 @@ fn run_check(
     // Track which glob patterns matched at least one struct
     let mut pattern_matched = vec![false; compiled.patterns.len()];
 
-    let mut violations = Vec::new();
+    let mut violations: Vec<CheckViolation> = Vec::new();
 
     for layout in &layouts {
         if let Some((budget, pattern_idx)) = compiled.find_budget(&layout.name) {
@@ -355,38 +372,54 @@ fn run_check(
                 pattern_matched[idx] = true;
             }
 
+            let source_location = layout.source_location.clone();
             if let Some(max_size) = budget.max_size
                 && layout.size > max_size
             {
-                violations.push(format!(
-                    "{}: size {} exceeds budget {} (+{} bytes)",
-                    layout.name,
-                    layout.size,
-                    max_size,
-                    layout.size - max_size
-                ));
+                violations.push(CheckViolation {
+                    struct_name: layout.name.clone(),
+                    kind: CheckViolationKind::MaxSize,
+                    message: format!(
+                        "{}: size {} exceeds budget {} (+{} bytes)",
+                        layout.name,
+                        layout.size,
+                        max_size,
+                        layout.size - max_size
+                    ),
+                    source_location: source_location.clone(),
+                });
             }
             if let Some(max_padding) = budget.max_padding
                 && layout.metrics.padding_bytes > max_padding
             {
-                violations.push(format!(
-                    "{}: padding {} exceeds budget {} (+{} bytes)",
-                    layout.name,
-                    layout.metrics.padding_bytes,
-                    max_padding,
-                    layout.metrics.padding_bytes - max_padding
-                ));
+                violations.push(CheckViolation {
+                    struct_name: layout.name.clone(),
+                    kind: CheckViolationKind::MaxPaddingBytes,
+                    message: format!(
+                        "{}: padding {} exceeds budget {} (+{} bytes)",
+                        layout.name,
+                        layout.metrics.padding_bytes,
+                        max_padding,
+                        layout.metrics.padding_bytes - max_padding
+                    ),
+                    source_location: source_location.clone(),
+                });
             }
             if let Some(max_pct) = budget.max_padding_percent {
                 const EPSILON: f64 = 1e-6;
                 if layout.metrics.padding_percentage > max_pct + EPSILON {
-                    violations.push(format!(
-                        "{}: padding {:.1}% exceeds budget {:.1}% (+{:.1} percentage points)",
-                        layout.name,
-                        layout.metrics.padding_percentage,
-                        max_pct,
-                        layout.metrics.padding_percentage - max_pct
-                    ));
+                    violations.push(CheckViolation {
+                        struct_name: layout.name.clone(),
+                        kind: CheckViolationKind::MaxPaddingPercent,
+                        message: format!(
+                            "{}: padding {:.1}% exceeds budget {:.1}% (+{:.1} percentage points)",
+                            layout.name,
+                            layout.metrics.padding_percentage,
+                            max_pct,
+                            layout.metrics.padding_percentage - max_pct
+                        ),
+                        source_location: source_location.clone(),
+                    });
                 }
             }
             if let Some(max_fs) = budget.max_false_sharing_warnings {
@@ -394,10 +427,15 @@ fn run_check(
                 // Clamp to u32::MAX to prevent truncation on 64-bit platforms
                 let warning_count = fs.warnings.len().min(u32::MAX as usize) as u32;
                 if warning_count > max_fs {
-                    violations.push(format!(
-                        "{}: {} potential false sharing issue(s) exceeds limit of {}",
-                        layout.name, warning_count, max_fs
-                    ));
+                    violations.push(CheckViolation {
+                        struct_name: layout.name.clone(),
+                        kind: CheckViolationKind::MaxFalseSharingWarnings,
+                        message: format!(
+                            "{}: {} potential false sharing issue(s) exceeds limit of {}",
+                            layout.name, warning_count, max_fs
+                        ),
+                        source_location: source_location.clone(),
+                    });
                 }
             }
         }
@@ -413,17 +451,55 @@ fn run_check(
         }
     }
 
-    if violations.is_empty() {
-        println!("All structs within budget constraints");
-        Ok(())
-    } else {
-        use colored::Colorize;
-        eprintln!("{}", "Budget violations:".red().bold());
-        for v in &violations {
-            eprintln!("  {}", v);
+    match output_format {
+        OutputFormat::Table => {
+            if violations.is_empty() {
+                println!("All structs within budget constraints");
+                Ok(())
+            } else {
+                use colored::Colorize;
+                eprintln!("{}", "Budget violations:".red().bold());
+                for v in &violations {
+                    eprintln!("  {}", v.message);
+                }
+                bail!("Budget check failed: {} violation(s)", violations.len());
+            }
         }
-        bail!("Budget check failed: {} violation(s)", violations.len());
+        OutputFormat::Json => {
+            let output = CheckJsonOutput {
+                version: env!("CARGO_PKG_VERSION"),
+                violations: &violations,
+                summary: CheckSummary { total_violations: violations.len() },
+            };
+            println!("{}", serde_json::to_string_pretty(&output)?);
+            if violations.is_empty() {
+                Ok(())
+            } else {
+                bail!("Budget check failed: {} violation(s)", violations.len());
+            }
+        }
+        OutputFormat::Sarif => {
+            let formatter = SarifFormatter::new();
+            println!("{}", formatter.format_check(&violations));
+            if violations.is_empty() {
+                Ok(())
+            } else {
+                bail!("Budget check failed: {} violation(s)", violations.len());
+            }
+        }
     }
+}
+
+#[derive(serde::Serialize)]
+struct CheckJsonOutput<'a> {
+    version: &'static str,
+    violations: &'a [CheckViolation],
+    summary: CheckSummary,
+}
+
+#[derive(serde::Serialize)]
+struct CheckSummary {
+    total_violations: usize,
 }
 
 #[derive(serde::Deserialize)]
@@ -580,23 +656,29 @@ fn run_suggest(
         analyze_layout(layout, cache_line_size);
     }
 
-    // Optimize each layout
-    let mut suggestions: Vec<_> = layouts.iter().map(|l| optimize_layout(l, max_align)).collect();
+    // Optimize each layout and keep source locations aligned
+    let mut suggestions_with_locations: Vec<_> = layouts
+        .iter()
+        .map(|l| (optimize_layout(l, max_align), l.source_location.clone()))
+        .collect();
 
     // Filter by minimum savings
     if let Some(min) = min_savings {
-        suggestions.retain(|s| s.savings_bytes >= min);
+        suggestions_with_locations.retain(|(s, _)| s.savings_bytes >= min);
     }
 
-    if suggestions.is_empty() {
+    if suggestions_with_locations.is_empty() {
         eprintln!("No structs with optimization potential found");
         return Ok(());
     }
 
     // Sort by savings if requested
     if sort_by_savings {
-        suggestions.sort_by(|a, b| b.savings_bytes.cmp(&a.savings_bytes));
+        suggestions_with_locations.sort_by(|(a, _), (b, _)| b.savings_bytes.cmp(&a.savings_bytes));
     }
+
+    let (suggestions, locations): (Vec<_>, Vec<_>) =
+        suggestions_with_locations.into_iter().unzip();
 
     let output_str = match output_format {
         OutputFormat::Table => {
@@ -606,6 +688,10 @@ fn run_suggest(
         OutputFormat::Json => {
             let formatter = SuggestJsonFormatter::new(pretty);
             formatter.format(&suggestions)
+        }
+        OutputFormat::Sarif => {
+            let formatter = SarifFormatter::new();
+            formatter.format_suggest(&suggestions, &locations)
         }
     };
 

@@ -70,6 +70,9 @@ layout-audit inspect ./target/debug/myapp --min-padding 8
 # JSON output
 layout-audit inspect ./target/debug/myapp -o json
 
+# SARIF output for GitHub code scanning
+layout-audit inspect ./target/debug/myapp -o sarif > layout-audit.sarif
+
 # Custom cache line size (default: 64)
 layout-audit inspect ./target/debug/myapp --cache-line 128
 ```
@@ -88,6 +91,9 @@ layout-audit diff ./old-binary ./new-binary --fail-on-regression
 
 # JSON output for CI parsing
 layout-audit diff ./old-binary ./new-binary -o json
+
+# SARIF output for GitHub code scanning
+layout-audit diff ./old-binary ./new-binary -o sarif > layout-audit.sarif
 ```
 
 ### check - Enforce budget constraints
@@ -95,6 +101,9 @@ layout-audit diff ./old-binary ./new-binary -o json
 ```bash
 # Check structs against budget defined in config file
 layout-audit check ./target/debug/myapp --config .layout-audit.yaml
+
+# SARIF output for GitHub code scanning
+layout-audit check ./target/debug/myapp --config .layout-audit.yaml -o sarif > layout-audit.sarif
 ```
 
 Budget configuration (`.layout-audit.yaml`):
@@ -143,6 +152,9 @@ layout-audit suggest ./target/debug/myapp --sort-by-savings
 
 # JSON output
 layout-audit suggest ./target/debug/myapp -o json
+
+# SARIF output for GitHub code scanning
+layout-audit suggest ./target/debug/myapp -o sarif > layout-audit.sarif
 ```
 
 Example output:
@@ -196,6 +208,23 @@ Use layout-audit directly in your workflows:
   with:
     binary: ./target/debug/myapp
     command: inspect
+```
+
+### SARIF (GitHub code scanning)
+
+SARIF output is supported for `inspect`, `diff`, `check`, and `suggest` and can be uploaded to GitHub code scanning.
+Make sure your workflow has the `security-events: write` permission.
+
+```yaml
+permissions:
+  security-events: write
+
+- uses: avifenesh/layout-audit@v0.4.1
+  with:
+    command: diff
+    binary: ./target/debug/myapp
+    baseline: ./target/debug/myapp-baseline
+    output: sarif
 ```
 
 ### Action Inputs

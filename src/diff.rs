@@ -1,4 +1,4 @@
-use crate::types::StructLayout;
+use crate::types::{SourceLocation, StructLayout};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -26,6 +26,8 @@ pub struct StructSummary {
     pub name: String,
     pub size: u64,
     pub padding_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_location: Option<SourceLocation>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -38,6 +40,10 @@ pub struct StructChange {
     pub new_padding: u64,
     pub padding_delta: i64,
     pub member_changes: Vec<MemberChange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_location: Option<SourceLocation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_source_location: Option<SourceLocation>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -100,6 +106,7 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
                     name: name.clone(),
                     size: s.size,
                     padding_bytes: s.metrics.padding_bytes,
+                    source_location: s.source_location.clone(),
                 });
             }
             continue;
@@ -111,6 +118,7 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
                     name: name.clone(),
                     size: s.size,
                     padding_bytes: s.metrics.padding_bytes,
+                    source_location: s.source_location.clone(),
                 });
             }
             continue;
@@ -131,6 +139,7 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
                 name: name.clone(),
                 size: s.size,
                 padding_bytes: s.metrics.padding_bytes,
+                source_location: s.source_location.clone(),
             });
         }
 
@@ -139,6 +148,7 @@ pub fn diff_layouts(old: &[StructLayout], new: &[StructLayout]) -> DiffResult {
                 name: name.clone(),
                 size: s.size,
                 padding_bytes: s.metrics.padding_bytes,
+                source_location: s.source_location.clone(),
             });
         }
     }
@@ -381,6 +391,8 @@ fn diff_struct(old: &StructLayout, new: &StructLayout) -> Option<StructChange> {
         new_padding: new.metrics.padding_bytes,
         padding_delta,
         member_changes,
+        source_location: new.source_location.clone(),
+        old_source_location: old.source_location.clone(),
     })
 }
 

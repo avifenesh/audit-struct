@@ -339,6 +339,84 @@ budgets:
 }
 
 #[test]
+fn test_check_json_output() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let config = create_temp_config(
+        r#"
+budgets:
+  NoPadding:
+    max_size: 100
+    max_padding: 10
+    max_padding_percent: 50.0
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "check",
+            path.to_str().unwrap(),
+            "--config",
+            config.to_str().unwrap(),
+            "-o",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(output.status.success(), "Check JSON should pass");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    assert!(parsed["violations"].is_array(), "violations should be array");
+    assert!(parsed["summary"]["total_violations"].is_number());
+}
+
+#[test]
+fn test_check_sarif_output() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let config = create_temp_config(
+        r#"
+budgets:
+  InternalPadding:
+    max_size: 10
+"#,
+    );
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "check",
+            path.to_str().unwrap(),
+            "--config",
+            config.to_str().unwrap(),
+            "-o",
+            "sarif",
+        ])
+        .output()
+        .expect("Failed to run check command");
+
+    std::fs::remove_file(&config).ok();
+
+    assert!(!output.status.success(), "Check SARIF should fail for violation");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid SARIF JSON");
+    assert_eq!(parsed["version"], "2.1.0");
+    assert!(parsed["runs"][0]["results"].is_array());
+}
+
+#[test]
 fn test_check_budget_fail_size() {
     let path = match get_fixture_path() {
         Some(p) => p,
@@ -605,6 +683,102 @@ fn test_diff_identical_binaries() {
         removed.len(),
         changed.len()
     );
+}
+
+#[test]
+fn test_diff_sarif_output() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args(["run", "--", "diff", path.to_str().unwrap(), path.to_str().unwrap(), "-o", "sarif"])
+        .output()
+        .expect("Failed to run diff command");
+
+    assert!(
+        output.status.success(),
+        "Diff SARIF should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid SARIF JSON");
+
+    assert_eq!(parsed["version"], "2.1.0");
+    assert!(parsed["runs"].is_array(), "SARIF runs should be array");
+}
+
+#[test]
+fn test_inspect_sarif_output() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "inspect",
+            path.to_str().unwrap(),
+            "-o",
+            "sarif",
+            "--filter",
+            "InternalPadding",
+        ])
+        .output()
+        .expect("Failed to run inspect command");
+
+    assert!(
+        output.status.success(),
+        "Inspect SARIF should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid SARIF JSON");
+
+    assert_eq!(parsed["version"], "2.1.0");
+    let results = parsed["runs"][0]["results"].as_array().unwrap();
+    assert!(!results.is_empty(), "Inspect SARIF should contain results");
+}
+
+#[test]
+fn test_suggest_sarif_output() {
+    let path = match get_fixture_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let output = std::process::Command::new("cargo")
+        .args([
+            "run",
+            "--",
+            "suggest",
+            path.to_str().unwrap(),
+            "-o",
+            "sarif",
+            "--filter",
+            "InternalPadding",
+            "--min-savings",
+            "1",
+        ])
+        .output()
+        .expect("Failed to run suggest command");
+
+    assert!(
+        output.status.success(),
+        "Suggest SARIF should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid SARIF JSON");
+
+    assert_eq!(parsed["version"], "2.1.0");
+    assert!(parsed["runs"][0]["results"].is_array());
 }
 
 #[test]

@@ -30,7 +30,7 @@ pub enum Commands {
         #[arg(short, long)]
         filter: Option<String>,
 
-        /// Output format
+        /// Output format (table, json, sarif)
         #[arg(short, long, value_enum, default_value = "table")]
         output: OutputFormat,
 
@@ -81,7 +81,7 @@ pub enum Commands {
         #[arg(short, long)]
         filter: Option<String>,
 
-        /// Output format
+        /// Output format (table, json, sarif)
         #[arg(short, long, value_enum, default_value = "table")]
         output: OutputFormat,
 
@@ -108,6 +108,10 @@ pub enum Commands {
         #[arg(short, long, default_value = ".layout-audit.yaml")]
         config: PathBuf,
 
+        /// Output format (table, json, sarif)
+        #[arg(short, long, value_enum, default_value = "table")]
+        output: OutputFormat,
+
         /// Cache line size in bytes (must be > 0)
         #[arg(long, default_value = "64", value_parser = clap::value_parser!(u32).range(1..))]
         cache_line: u32,
@@ -127,7 +131,7 @@ pub enum Commands {
         #[arg(short, long)]
         filter: Option<String>,
 
-        /// Output format
+        /// Output format (table, json, sarif)
         #[arg(short, long, value_enum, default_value = "table")]
         output: OutputFormat,
 
@@ -165,6 +169,7 @@ pub enum Commands {
 pub enum OutputFormat {
     Table,
     Json,
+    Sarif,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]

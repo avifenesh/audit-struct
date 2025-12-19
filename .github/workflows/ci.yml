@@ -45,6 +45,32 @@ jobs:
       - name: Run tests
         run: cargo test
 
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Compile test fixtures
+        run: |
+          mkdir -p tests/fixtures/bin
+          gcc -g -o tests/fixtures/bin/test_simple tests/fixtures/test_simple.c
+          gcc -g -o tests/fixtures/bin/test_modified tests/fixtures/test_modified.c
+          g++ -std=c++17 -g -o tests/fixtures/bin/test_cpp_templates tests/fixtures/test_cpp_templates.cpp
+          go build -gcflags=all="-N -l" -o tests/fixtures/bin/test_go tests/fixtures/test_go.go
+
+      - name: Run coverage
+        run: cargo llvm-cov --workspace --all-features --fail-under-lines 90
+
   test-linux:
     runs-on: ubuntu-latest
     steps:
