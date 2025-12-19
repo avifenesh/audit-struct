@@ -22,9 +22,7 @@ struct InspectConfig<'a> {
     include_go_runtime: bool,
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
-
+fn run_cli(cli: Cli) -> Result<()> {
     match cli.command {
         Commands::Inspect {
             binary,
@@ -107,6 +105,11 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+    run_cli(cli)
 }
 
 fn run_inspect(config: &InspectConfig<'_>) -> Result<()> {
@@ -677,8 +680,7 @@ fn run_suggest(
         suggestions_with_locations.sort_by(|(a, _), (b, _)| b.savings_bytes.cmp(&a.savings_bytes));
     }
 
-    let (suggestions, locations): (Vec<_>, Vec<_>) =
-        suggestions_with_locations.into_iter().unzip();
+    let (suggestions, locations): (Vec<_>, Vec<_>) = suggestions_with_locations.into_iter().unzip();
 
     let output_str = match output_format {
         OutputFormat::Table => {
@@ -698,4 +700,545 @@ fn run_suggest(
     println!("{}", output_str);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    fn find_fixture_path(name: &str) -> Option<PathBuf> {
+        let base = Path::new("tests/fixtures/bin");
+        let dsym_path = base.join(format!("{}.dSYM/Contents/Resources/DWARF/{}", name, name));
+        if dsym_path.exists() {
+            return Some(dsym_path);
+        }
+
+        let exe_path = base.join(format!("{}.exe", name));
+        if exe_path.exists() {
+            return Some(exe_path);
+        }
+
+        let direct_path = base.join(name);
+        if direct_path.exists() {
+            return Some(direct_path);
+        }
+
+        None
+    }
+
+    fn create_temp_config(content: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let temp_dir = std::env::temp_dir();
+        let unique_id = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let config_path = temp_dir.join(format!(
+            "layout-audit-main-test-{}-{}.yaml",
+            std::process::id(),
+            unique_id
+        ));
+        std::fs::write(&config_path, content).expect("Failed to write temp config");
+        config_path
+    }
+
+    #[test]
+    fn run_inspect_outputs() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let base = InspectConfig {
+            binary_path: &path,
+            filter: Some("Padding"),
+            output_format: OutputFormat::Table,
+            sort_by: SortField::Name,
+            top: Some(1),
+            min_padding: None,
+            no_color: true,
+            cache_line_size: 64,
+            pretty: true,
+            warn_false_sharing: true,
+            include_go_runtime: false,
+        };
+
+        run_inspect(&base).expect("inspect table");
+        let json_cfg = InspectConfig { output_format: OutputFormat::Json, ..base };
+        run_inspect(&json_cfg).expect("inspect json");
+        let sarif_cfg = InspectConfig { output_format: OutputFormat::Sarif, ..base };
+        run_inspect(&sarif_cfg).expect("inspect sarif");
+    }
+
+    #[test]
+    fn run_diff_outputs() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        run_diff(&path, &path, None, OutputFormat::Table, 64, false, false).expect("diff table");
+        run_diff(&path, &path, None, OutputFormat::Json, 64, false, false).expect("diff json");
+        run_diff(&path, &path, None, OutputFormat::Sarif, 64, false, false).expect("diff sarif");
+    }
+
+    #[test]
+    fn run_check_outputs() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let config = create_temp_config(
+            r#"
+budgets:
+  NoPadding:
+    max_size: 100
+    max_padding: 20
+    max_padding_percent: 80.0
+"#,
+        );
+
+        run_check(&path, &config, OutputFormat::Table, 64, false).expect("check table");
+        run_check(&path, &config, OutputFormat::Json, 64, false).expect("check json");
+        run_check(&path, &config, OutputFormat::Sarif, 64, false).expect("check sarif");
+
+        std::fs::remove_file(&config).ok();
+    }
+
+    #[test]
+    fn run_check_failure_path() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let config = create_temp_config(
+            r#"
+budgets:
+  InternalPadding:
+    max_size: 10
+"#,
+        );
+
+        let result = run_check(&path, &config, OutputFormat::Table, 64, false);
+        std::fs::remove_file(&config).ok();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn run_check_json_failure_path() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let config = create_temp_config(
+            r#"
+budgets:
+  InternalPadding:
+    max_size: 1
+"#,
+        );
+
+        let result = run_check(&path, &config, OutputFormat::Json, 64, false);
+        std::fs::remove_file(&config).ok();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn run_check_sarif_failure_path() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let config = create_temp_config(
+            r#"
+budgets:
+  InternalPadding:
+    max_size: 1
+"#,
+        );
+
+        let result = run_check(&path, &config, OutputFormat::Sarif, 64, false);
+        std::fs::remove_file(&config).ok();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn run_check_false_sharing_violation() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let binary = match BinaryData::load(&path) {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+        let loaded = match binary.load_dwarf() {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+        let dwarf = DwarfContext::new(&loaded);
+        let mut layouts = match dwarf.find_structs(Some("WithAtomics"), false) {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+        if layouts.is_empty() {
+            return;
+        }
+        let layout = &mut layouts[0];
+        analyze_layout(layout, 64);
+        let fs = analyze_false_sharing(layout, 64);
+        if fs.warnings.is_empty() {
+            return;
+        }
+
+        let config = create_temp_config(
+            r#"
+budgets:
+  WithAtomics:
+    max_false_sharing_warnings: 0
+"#,
+        );
+
+        let result = run_check(&path, &config, OutputFormat::Table, 64, false);
+        std::fs::remove_file(&config).ok();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn run_suggest_outputs() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        run_suggest(&path, None, OutputFormat::Table, Some(1), 64, true, 8, false, true, false)
+            .expect("suggest table");
+
+        run_suggest(&path, None, OutputFormat::Json, Some(1), 64, true, 8, false, true, false)
+            .expect("suggest json");
+
+        run_suggest(&path, None, OutputFormat::Sarif, Some(1), 64, true, 8, false, true, false)
+            .expect("suggest sarif");
+    }
+
+    #[test]
+    fn run_inspect_no_matches() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let cfg = InspectConfig {
+            binary_path: &path,
+            filter: Some("DoesNotExist"),
+            output_format: OutputFormat::Table,
+            sort_by: SortField::Name,
+            top: None,
+            min_padding: None,
+            no_color: true,
+            cache_line_size: 64,
+            pretty: false,
+            warn_false_sharing: false,
+            include_go_runtime: false,
+        };
+
+        run_inspect(&cfg).expect("inspect no matches");
+    }
+
+    #[test]
+    fn run_inspect_min_padding_filters_all() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let cfg = InspectConfig {
+            binary_path: &path,
+            filter: None,
+            output_format: OutputFormat::Table,
+            sort_by: SortField::PaddingPct,
+            top: None,
+            min_padding: Some(10_000),
+            no_color: true,
+            cache_line_size: 64,
+            pretty: false,
+            warn_false_sharing: false,
+            include_go_runtime: false,
+        };
+
+        run_inspect(&cfg).expect("inspect min padding");
+    }
+
+    #[test]
+    fn run_diff_with_changes_table() {
+        let old_path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+        let new_path = match find_fixture_path("test_modified") {
+            Some(p) => p,
+            None => return,
+        };
+
+        run_diff(&old_path, &new_path, None, OutputFormat::Table, 64, false, false)
+            .expect("diff table changes");
+    }
+
+    #[test]
+    fn run_check_missing_config_path() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let missing = Path::new("tests/fixtures/does-not-exist.yaml");
+        let result = run_check(&path, missing, OutputFormat::Table, 64, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn config_compile_invalid_patterns() {
+        let cfg = Config {
+            budgets: [(
+                "".to_string(),
+                Budget {
+                    max_size: Some(1),
+                    max_padding: None,
+                    max_padding_percent: None,
+                    max_false_sharing_warnings: None,
+                },
+            )]
+            .into_iter()
+            .collect(),
+        };
+
+        assert!(cfg.compile().is_err());
+
+        let cfg = Config {
+            budgets: [(
+                "[invalid".to_string(),
+                Budget {
+                    max_size: Some(1),
+                    max_padding: None,
+                    max_padding_percent: None,
+                    max_false_sharing_warnings: None,
+                },
+            )]
+            .into_iter()
+            .collect(),
+        };
+
+        assert!(cfg.compile().is_err());
+    }
+
+    #[test]
+    fn budget_validate_rejects_invalid_percent() {
+        let budget = Budget {
+            max_size: None,
+            max_padding: None,
+            max_padding_percent: Some(200.0),
+            max_false_sharing_warnings: None,
+        };
+        assert!(budget.validate("X").is_err());
+    }
+
+    #[test]
+    fn run_check_warnings_for_unmatched_patterns() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let config = create_temp_config(
+            r#"
+budgets:
+  DoesNotExist:
+    max_size: 999
+  "NoMatch*":
+    max_padding: 999
+"#,
+        );
+
+        run_check(&path, &config, OutputFormat::Table, 64, false).expect("check warnings");
+        std::fs::remove_file(&config).ok();
+    }
+
+    #[test]
+    fn run_check_empty_budgets() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let config = create_temp_config("budgets: {}");
+        run_check(&path, &config, OutputFormat::Table, 64, false).expect("check empty budgets");
+        std::fs::remove_file(&config).ok();
+    }
+
+    #[test]
+    fn run_suggest_sort_by_savings_branch() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        run_suggest(&path, None, OutputFormat::Table, None, 64, true, 8, true, true, false)
+            .expect("suggest sorted");
+    }
+
+    #[test]
+    fn run_suggest_no_savings_path() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        run_suggest(
+            &path,
+            None,
+            OutputFormat::Table,
+            Some(10_000),
+            64,
+            true,
+            8,
+            false,
+            true,
+            false,
+        )
+        .expect("suggest no savings");
+    }
+
+    #[test]
+    fn run_inspect_sort_variants() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let cfg = InspectConfig {
+            binary_path: &path,
+            filter: Some("Padding"),
+            output_format: OutputFormat::Table,
+            sort_by: SortField::Size,
+            top: None,
+            min_padding: None,
+            no_color: true,
+            cache_line_size: 64,
+            pretty: false,
+            warn_false_sharing: false,
+            include_go_runtime: false,
+        };
+        run_inspect(&cfg).expect("inspect size sort");
+
+        let cfg = InspectConfig { sort_by: SortField::Padding, ..cfg };
+        run_inspect(&cfg).expect("inspect padding sort");
+    }
+
+    #[test]
+    fn glob_helpers_and_budget_lookup() {
+        assert!(!is_glob_pattern("PlainName"));
+        assert!(is_glob_pattern("*Padding"));
+
+        let cfg = Config {
+            budgets: [
+                (
+                    "Exact".to_string(),
+                    Budget {
+                        max_size: Some(1),
+                        max_padding: None,
+                        max_padding_percent: None,
+                        max_false_sharing_warnings: None,
+                    },
+                ),
+                (
+                    "Glob*".to_string(),
+                    Budget {
+                        max_size: Some(2),
+                        max_padding: None,
+                        max_padding_percent: None,
+                        max_false_sharing_warnings: None,
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        };
+
+        let compiled = cfg.compile().expect("compile budgets");
+        let exact = compiled.find_budget("Exact");
+        assert!(exact.is_some());
+        let glob = compiled.find_budget("GlobName");
+        assert!(glob.is_some());
+    }
+
+    #[test]
+    fn run_cli_dispatches_commands() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let inspect = Cli {
+            command: Commands::Inspect {
+                binary: path.clone(),
+                filter: Some("Padding".to_string()),
+                output: OutputFormat::Table,
+                sort_by: SortField::Name,
+                top: Some(1),
+                min_padding: None,
+                no_color: true,
+                cache_line: 64,
+                pretty: false,
+                warn_false_sharing: false,
+                include_go_runtime: false,
+            },
+        };
+        run_cli(inspect).expect("cli inspect");
+
+        let diff = Cli {
+            command: Commands::Diff {
+                old: path.clone(),
+                new: path.clone(),
+                filter: None,
+                output: OutputFormat::Json,
+                cache_line: 64,
+                fail_on_regression: false,
+                include_go_runtime: false,
+            },
+        };
+        run_cli(diff).expect("cli diff");
+
+        let config = create_temp_config("budgets: {}");
+        let check = Cli {
+            command: Commands::Check {
+                binary: path.clone(),
+                config: config.clone(),
+                output: OutputFormat::Table,
+                cache_line: 64,
+                include_go_runtime: false,
+            },
+        };
+        run_cli(check).expect("cli check");
+        std::fs::remove_file(&config).ok();
+
+        let suggest = Cli {
+            command: Commands::Suggest {
+                binary: path,
+                filter: None,
+                output: OutputFormat::Json,
+                min_savings: None,
+                cache_line: 64,
+                pretty: false,
+                max_align: 8,
+                sort_by_savings: false,
+                no_color: true,
+                include_go_runtime: false,
+            },
+        };
+        run_cli(suggest).expect("cli suggest");
+    }
 }

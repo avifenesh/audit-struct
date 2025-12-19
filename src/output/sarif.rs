@@ -238,7 +238,9 @@ fn build_rules(rule_ids: &BTreeSet<&'static str>) -> Vec<Value> {
 
 fn rule_metadata(rule_id: &str) -> (&'static str, &'static str) {
     match rule_id {
-        RULE_SIZE_INCREASE => ("Struct size increased", "Struct size increased relative to baseline"),
+        RULE_SIZE_INCREASE => {
+            ("Struct size increased", "Struct size increased relative to baseline")
+        }
         RULE_PADDING_INCREASE => {
             ("Struct padding increased", "Struct padding increased relative to baseline")
         }
@@ -306,8 +308,7 @@ fn render_sarif(tool_version: &str, rules: Vec<Value>, results: Vec<Value>) -> S
         }]
     });
 
-    serde_json::to_string_pretty(&sarif)
-        .unwrap_or_else(|e| format!("{{\"error\": \"{}\"}}", e))
+    serde_json::to_string_pretty(&sarif).unwrap_or_else(|e| format!("{{\"error\": \"{}\"}}", e))
 }
 
 #[cfg(test)]

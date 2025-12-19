@@ -44,3 +44,44 @@ where
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gimli::{
+        DebugAbbrevOffset, DebugInfoOffset, Encoding, Format, UnitHeader, UnitSectionOffset,
+        UnitType,
+    };
+
+    #[test]
+    fn read_u64_from_attr_handles_encodings() {
+        assert_eq!(read_u64_from_attr(Some(AttributeValue::Data1(1))), Some(1));
+        assert_eq!(read_u64_from_attr(Some(AttributeValue::Data2(2))), Some(2));
+        assert_eq!(read_u64_from_attr(Some(AttributeValue::Data4(3))), Some(3));
+        assert_eq!(read_u64_from_attr(Some(AttributeValue::Data8(4))), Some(4));
+        assert_eq!(read_u64_from_attr(Some(AttributeValue::Udata(5))), Some(5));
+        assert_eq!(read_u64_from_attr(Some(AttributeValue::Sdata(-1))), None);
+        assert_eq!(read_u64_from_attr(Some(AttributeValue::Sdata(7))), Some(7));
+        assert_eq!(read_u64_from_attr(Some(AttributeValue::FileIndex(9))), Some(9));
+    }
+
+    #[test]
+    fn debug_info_ref_to_unit_offset_validates_unit() {
+        let encoding = Encoding { address_size: 8, format: Format::Dwarf32, version: 4 };
+        let unit_offset = UnitSectionOffset::DebugInfoOffset(DebugInfoOffset(0x100));
+        let header = UnitHeader::new(
+            encoding,
+            0,
+            UnitType::Compilation,
+            DebugAbbrevOffset(0),
+            unit_offset,
+            DwarfSlice::new(&[], gimli::RunTimeEndian::Little),
+        );
+
+        let within = debug_info_ref_to_unit_offset(DebugInfoOffset(0x100), &header);
+        assert_eq!(within, Some(UnitOffset(0)));
+
+        let outside = debug_info_ref_to_unit_offset(DebugInfoOffset(0x0ff), &header);
+        assert_eq!(outside, None);
+    }
+}

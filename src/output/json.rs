@@ -27,3 +27,30 @@ impl JsonFormatter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{LayoutMetrics, StructLayout};
+
+    fn layout(name: &str) -> StructLayout {
+        let mut s = StructLayout::new(name.to_string(), 8, Some(8));
+        s.metrics = LayoutMetrics { padding_bytes: 0, total_size: 8, ..LayoutMetrics::default() };
+        s
+    }
+
+    #[test]
+    fn json_formatter_pretty() {
+        let formatter = JsonFormatter::new(true);
+        let out = formatter.format(&[layout("Foo")]);
+        let parsed: serde_json::Value = serde_json::from_str(&out).expect("valid JSON");
+        assert!(parsed["structs"].is_array());
+    }
+
+    #[test]
+    fn json_formatter_compact() {
+        let formatter = JsonFormatter::new(false);
+        let out = formatter.format(&[layout("Foo")]);
+        assert!(out.contains("\"structs\""));
+    }
+}

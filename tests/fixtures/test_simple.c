@@ -62,6 +62,51 @@ struct BitfieldFlags {
     unsigned int c:28;
 };
 
+// Typedefs, enums, qualifiers, and atomics
+typedef int MyInt;
+
+enum Color {
+    Red,
+    Green,
+    Blue
+};
+
+struct WithQualifiers {
+    const int *cp;
+    volatile int v;
+    int * restrict rp;
+};
+
+typedef struct {
+    int x;
+} AliasStruct;
+
+struct WithTypedef {
+    MyInt value;
+    AliasStruct inner;
+};
+
+struct WithEnum {
+    enum Color c;
+};
+
+struct WithFuncPtr {
+    int (*cb)(int);
+};
+
+struct WithAtomic {
+    _Atomic int value;
+};
+
+struct WithAtomics {
+    _Atomic int a;
+    _Atomic int b;
+};
+
+static int sample_fn(int x) {
+    return x + 1;
+}
+
 int main() {
     struct NoPadding np;
     struct InternalPadding ip;
@@ -70,6 +115,12 @@ int main() {
     struct WithArray wa;
     struct WithPointer wp;
     struct BitfieldFlags bf;
+    struct WithQualifiers wq;
+    struct WithTypedef wt;
+    struct WithEnum we;
+    struct WithFuncPtr wfp;
+    struct WithAtomic wa2;
+    struct WithAtomics wa3;
 
     (void)np;
     (void)ip;
@@ -78,6 +129,13 @@ int main() {
     (void)wa;
     (void)wp;
     (void)bf;
+    (void)wq;
+    (void)wt;
+    (void)we;
+    (void)wfp;
+    (void)wa2;
+    (void)wa3;
+    (void)sample_fn;
 
     return 0;
 }

@@ -245,3 +245,79 @@ enum TableEntry<'a> {
         size: u64,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{
+        CacheLineSpanningWarning, FalseSharingAnalysis, FalseSharingWarning, LayoutMetrics,
+        MemberLayout, PaddingHole, StructLayout,
+    };
+
+    fn sample_layout() -> StructLayout {
+        let mut layout = StructLayout::new("Foo".to_string(), 16, Some(8));
+        layout.members = vec![
+            MemberLayout::new("a".to_string(), "u8".to_string(), Some(0), Some(1)),
+            MemberLayout::new("b".to_string(), "u32".to_string(), Some(4), Some(4)),
+        ];
+        layout.metrics = LayoutMetrics {
+            total_size: 16,
+            useful_size: 5,
+            padding_bytes: 11,
+            padding_percentage: 68.75,
+            cache_lines_spanned: 1,
+            cache_line_density: 31.25,
+            padding_holes: vec![PaddingHole {
+                offset: 1,
+                size: 3,
+                after_member: Some("a".to_string()),
+            }],
+            false_sharing: Some(FalseSharingAnalysis {
+                warnings: vec![FalseSharingWarning {
+                    member_a: "a".to_string(),
+                    member_b: "b".to_string(),
+                    cache_line: 0,
+                    gap_bytes: 0,
+                }],
+                spanning_warnings: vec![CacheLineSpanningWarning {
+                    member: "b".to_string(),
+                    type_name: "u32".to_string(),
+                    offset: 4,
+                    size: 4,
+                    start_cache_line: 0,
+                    end_cache_line: 1,
+                    lines_spanned: 2,
+                }],
+                atomic_members: vec![crate::types::AtomicMember {
+                    name: "a".to_string(),
+                    type_name: "u8".to_string(),
+                    offset: 0,
+                    size: 1,
+                    cache_line: 0,
+                    end_cache_line: 0,
+                    spans_cache_lines: false,
+                }],
+            }),
+            partial: false,
+        };
+        layout
+    }
+
+    #[test]
+    fn table_formatter_no_color_includes_padding_and_warnings() {
+        let formatter = TableFormatter::new(true, 64);
+        let out = formatter.format(&[sample_layout()]);
+        assert!(out.contains("struct Foo"));
+        assert!(out.contains("PAD"));
+        assert!(out.contains("Potential False Sharing"));
+        assert!(out.contains("Cache Line Spanning"));
+        assert!(out.contains("Atomic members"));
+    }
+
+    #[test]
+    fn table_formatter_color_path_runs() {
+        let formatter = TableFormatter::new(false, 64);
+        let out = formatter.format(&[sample_layout()]);
+        assert!(out.contains("struct Foo"));
+    }
+}

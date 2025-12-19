@@ -399,7 +399,7 @@ fn diff_struct(old: &StructLayout, new: &StructLayout) -> Option<StructChange> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{LayoutMetrics, MemberLayout, StructLayout};
+    use crate::types::{LayoutMetrics, MemberLayout, SourceLocation, StructLayout};
 
     fn layout(
         name: &str,
@@ -410,6 +410,12 @@ mod tests {
         let mut s = StructLayout::new(name.to_string(), size, Some(8));
         s.members = members;
         s.metrics = LayoutMetrics { padding_bytes, total_size: size, ..LayoutMetrics::default() };
+        s
+    }
+
+    fn layout_with_loc(name: &str, file: &str, line: u64) -> StructLayout {
+        let mut s = layout(name, 16, 0, Vec::new());
+        s.source_location = Some(SourceLocation { file: file.to_string(), line });
         s
     }
 
@@ -445,5 +451,126 @@ mod tests {
         // Expected ordering: Removed, Added, TypeChanged, SizeChanged, OffsetChanged (then name)
         let kinds: Vec<_> = changes.iter().map(|c| &c.kind).collect();
         assert!(kinds.windows(2).all(|w| kind_rank(w[0]) <= kind_rank(w[1])));
+    }
+
+    #[test]
+    fn diff_added_and_removed() {
+        let old = layout("A", 8, 0, Vec::new());
+        let new = layout("B", 8, 0, Vec::new());
+        let diff = diff_layouts(&[old], &[new]);
+        assert_eq!(diff.added.len(), 1);
+        assert_eq!(diff.removed.len(), 1);
+    }
+
+    #[test]
+    fn diff_matches_by_location_for_duplicates() {
+        let old1 = layout_with_loc("Dup", "a.c", 1);
+        let old2 = layout_with_loc("Dup", "b.c", 2);
+        let new1 = layout_with_loc("Dup", "b.c", 2);
+        let new2 = layout_with_loc("Dup", "a.c", 1);
+        let diff = diff_layouts(&[old1, old2], &[new1, new2]);
+        assert_eq!(diff.changed.len(), 0);
+        assert_eq!(diff.unchanged_count, 2);
+    }
+
+    #[test]
+    fn diff_detects_member_offset_change() {
+        let old = layout(
+            "X",
+            8,
+            0,
+            vec![MemberLayout::new("a".to_string(), "u32".to_string(), Some(0), Some(4))],
+        );
+        let new = layout(
+            "X",
+            8,
+            0,
+            vec![MemberLayout::new("a".to_string(), "u32".to_string(), Some(4), Some(4))],
+        );
+        let diff = diff_layouts(&[old], &[new]);
+        assert_eq!(diff.changed.len(), 1);
+        assert!(
+            diff.changed[0]
+                .member_changes
+                .iter()
+                .any(|c| c.kind == MemberChangeKind::OffsetChanged)
+        );
+    }
+
+    #[test]
+    fn diff_reports_all_member_change_kinds() {
+        let old = layout(
+            "Y",
+            16,
+            0,
+            vec![
+                MemberLayout::new("a".to_string(), "u32".to_string(), Some(0), Some(4)),
+                MemberLayout::new("b".to_string(), "u16".to_string(), Some(4), Some(2)),
+            ],
+        );
+        let mut new = layout(
+            "Y",
+            20,
+            4,
+            vec![
+                MemberLayout::new("b".to_string(), "u32".to_string(), Some(8), Some(4)),
+                MemberLayout::new("c".to_string(), "u8".to_string(), Some(0), Some(1)),
+            ],
+        );
+        new.metrics.padding_bytes = 4;
+
+        let diff = diff_layouts(&[old], &[new]);
+        let changes = &diff.changed[0].member_changes;
+        let kinds: Vec<_> = changes.iter().map(|c| &c.kind).collect();
+        assert!(kinds.contains(&&MemberChangeKind::Added));
+        assert!(kinds.contains(&&MemberChangeKind::Removed));
+        assert!(kinds.contains(&&MemberChangeKind::TypeChanged));
+        assert!(kinds.contains(&&MemberChangeKind::SizeChanged));
+        assert!(kinds.contains(&&MemberChangeKind::OffsetChanged));
+        assert!(diff.has_changes());
+        assert!(diff.has_regressions());
+    }
+
+    #[test]
+    fn member_similarity_location_penalty() {
+        let mut a = layout_with_loc("T", "a.c", 1);
+        let mut b = layout_with_loc("T", "b.c", 2);
+        a.members.push(MemberLayout::new("x".to_string(), "u8".to_string(), Some(0), Some(1)));
+        b.members.push(MemberLayout::new("x".to_string(), "u8".to_string(), Some(0), Some(1)));
+        let score = member_similarity_score(&a, &b);
+        assert_eq!(score, LOCATION_MISMATCH_PENALTY);
+    }
+
+    #[test]
+    fn match_structs_pairs_by_similarity() {
+        let old1 = layout(
+            "Z",
+            8,
+            0,
+            vec![MemberLayout::new("a".to_string(), "u8".to_string(), Some(0), Some(1))],
+        );
+        let old2 = layout(
+            "Z",
+            16,
+            0,
+            vec![MemberLayout::new("b".to_string(), "u32".to_string(), Some(0), Some(4))],
+        );
+        let new1 = layout(
+            "Z",
+            16,
+            0,
+            vec![MemberLayout::new("b".to_string(), "u32".to_string(), Some(0), Some(4))],
+        );
+        let new2 = layout(
+            "Z",
+            8,
+            0,
+            vec![MemberLayout::new("a".to_string(), "u8".to_string(), Some(0), Some(1))],
+        );
+
+        let (pairs, old_unmatched, new_unmatched) = match_structs(&[&old1, &old2], &[&new1, &new2]);
+        assert_eq!(pairs.len(), 2);
+        assert!(old_unmatched.is_empty());
+        assert!(new_unmatched.is_empty());
     }
 }

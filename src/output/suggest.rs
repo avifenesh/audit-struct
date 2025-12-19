@@ -194,3 +194,51 @@ impl SuggestJsonFormatter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn suggestion(name: &str, savings: u64) -> OptimizedLayout {
+        OptimizedLayout {
+            name: name.to_string(),
+            original_size: 16,
+            optimized_size: 16 - savings,
+            savings_bytes: savings,
+            savings_percent: if savings == 0 { 0.0 } else { (savings as f64 / 16.0) * 100.0 },
+            struct_alignment: 8,
+            original_members: Vec::new(),
+            optimized_members: Vec::new(),
+            skipped_members: Vec::new(),
+            has_bitfields: false,
+        }
+    }
+
+    #[test]
+    fn suggest_table_includes_warning_and_ffi_note() {
+        let mut s = suggestion("Foo", 4);
+        s.skipped_members = vec!["missing".to_string()];
+        s.has_bitfields = true;
+        let formatter = SuggestTableFormatter::new(true);
+        let out = formatter.format(&[s]);
+        assert!(out.contains("Reordering may affect"));
+        assert!(out.contains("Warning"));
+        assert!(out.contains("Bitfield"));
+    }
+
+    #[test]
+    fn suggest_table_handles_no_savings() {
+        let formatter = SuggestTableFormatter::new(true);
+        let out = formatter.format(&[suggestion("Bar", 0)]);
+        assert!(out.contains("already optimal"));
+    }
+
+    #[test]
+    fn suggest_json_summary_fields() {
+        let formatter = SuggestJsonFormatter::new(true);
+        let out = formatter.format(&[suggestion("A", 4), suggestion("B", 0)]);
+        let parsed: serde_json::Value = serde_json::from_str(&out).expect("valid JSON");
+        assert_eq!(parsed["summary"]["total_structs"], 2);
+        assert_eq!(parsed["summary"]["optimizable_structs"], 1);
+    }
+}

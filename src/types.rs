@@ -126,3 +126,36 @@ impl MemberLayout {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn member_end_offset_handles_overflow() {
+        let member = MemberLayout::new("a".to_string(), "u8".to_string(), Some(u64::MAX), Some(1));
+        assert_eq!(member.end_offset(), None);
+    }
+
+    #[test]
+    fn member_end_offset_ok() {
+        let member = MemberLayout::new("a".to_string(), "u8".to_string(), Some(4), Some(2));
+        assert_eq!(member.end_offset(), Some(6));
+    }
+
+    #[test]
+    fn member_with_atomic_flag() {
+        let member = MemberLayout::new("a".to_string(), "u32".to_string(), Some(0), Some(4))
+            .with_atomic(true);
+        assert!(member.is_atomic);
+    }
+
+    #[test]
+    fn struct_new_initializes_fields() {
+        let s = StructLayout::new("Foo".to_string(), 16, Some(8));
+        assert_eq!(s.name, "Foo");
+        assert_eq!(s.size, 16);
+        assert_eq!(s.alignment, Some(8));
+        assert!(s.members.is_empty());
+    }
+}

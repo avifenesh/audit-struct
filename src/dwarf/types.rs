@@ -252,3 +252,208 @@ impl<'a, 'b> TypeResolver<'a, 'b> {
         Ok(read_u64_from_attr(entry.attr_value(attr).ok().flatten()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::loader::BinaryData;
+    use gimli::DwTag;
+    use std::path::{Path, PathBuf};
+
+    fn find_fixture_path(name: &str) -> Option<PathBuf> {
+        let base = Path::new("tests/fixtures/bin");
+        let dsym_path = base.join(format!("{}.dSYM/Contents/Resources/DWARF/{}", name, name));
+        if dsym_path.exists() {
+            return Some(dsym_path);
+        }
+
+        let exe_path = base.join(format!("{}.exe", name));
+        if exe_path.exists() {
+            return Some(exe_path);
+        }
+
+        let direct_path = base.join(name);
+        if direct_path.exists() {
+            return Some(direct_path);
+        }
+
+        None
+    }
+
+    fn find_type_offset(unit: &Unit<DwarfSlice<'_>>, tag: DwTag) -> Option<UnitOffset> {
+        let mut entries = unit.entries();
+        while let Some((_, entry)) = entries.next_dfs().ok().flatten() {
+            if entry.tag() == tag {
+                return Some(entry.offset());
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn resolve_common_c_types() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let binary = match BinaryData::load(&path) {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+        let loaded = match binary.load_dwarf() {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+        let dwarf = &loaded.dwarf;
+        let mut units = dwarf.units();
+        let header = match units.next() {
+            Ok(Some(h)) => h,
+            _ => return,
+        };
+        let unit = match dwarf.unit(header) {
+            Ok(u) => u,
+            Err(_) => return,
+        };
+
+        let mut resolver = TypeResolver::new(&loaded.dwarf, &unit, loaded.address_size);
+
+        let tags = [
+            gimli::DW_TAG_base_type,
+            gimli::DW_TAG_pointer_type,
+            gimli::DW_TAG_const_type,
+            gimli::DW_TAG_volatile_type,
+            gimli::DW_TAG_restrict_type,
+            gimli::DW_TAG_typedef,
+            gimli::DW_TAG_array_type,
+            gimli::DW_TAG_enumeration_type,
+            gimli::DW_TAG_subroutine_type,
+            gimli::DW_TAG_atomic_type,
+            gimli::DW_TAG_structure_type,
+        ];
+
+        for tag in tags {
+            if let Some(offset) = find_type_offset(&unit, tag) {
+                let _ = resolver.resolve_type(offset).expect("resolve type");
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_reference_type_from_cpp() {
+        let path = match find_fixture_path("test_cpp_templates") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let binary = match BinaryData::load(&path) {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+        let loaded = match binary.load_dwarf() {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+        let dwarf = &loaded.dwarf;
+        let mut units = dwarf.units();
+        let header = match units.next() {
+            Ok(Some(h)) => h,
+            _ => return,
+        };
+        let unit = match dwarf.unit(header) {
+            Ok(u) => u,
+            Err(_) => return,
+        };
+
+        let mut resolver = TypeResolver::new(&loaded.dwarf, &unit, loaded.address_size);
+        if let Some(offset) = find_type_offset(&unit, gimli::DW_TAG_reference_type) {
+            let _ = resolver.resolve_type(offset).expect("resolve reference type");
+        }
+    }
+
+    #[test]
+    fn resolve_cpp_class_and_union_types() {
+        let path = match find_fixture_path("test_cpp_templates") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let binary = match BinaryData::load(&path) {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+        let loaded = match binary.load_dwarf() {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+        let dwarf = &loaded.dwarf;
+        let mut units = dwarf.units();
+        let header = match units.next() {
+            Ok(Some(h)) => h,
+            _ => return,
+        };
+        let unit = match dwarf.unit(header) {
+            Ok(u) => u,
+            Err(_) => return,
+        };
+
+        let mut resolver = TypeResolver::new(&loaded.dwarf, &unit, loaded.address_size);
+        for tag in [gimli::DW_TAG_class_type, gimli::DW_TAG_union_type] {
+            if let Some(offset) = find_type_offset(&unit, tag) {
+                let _ = resolver.resolve_type(offset).expect("resolve cpp type");
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_all_type_entries_best_effort() {
+        let path = match find_fixture_path("test_simple") {
+            Some(p) => p,
+            None => return,
+        };
+
+        let binary = match BinaryData::load(&path) {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+        let loaded = match binary.load_dwarf() {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+        let dwarf = &loaded.dwarf;
+        let mut units = dwarf.units();
+        let header = match units.next() {
+            Ok(Some(h)) => h,
+            _ => return,
+        };
+        let unit = match dwarf.unit(header) {
+            Ok(u) => u,
+            Err(_) => return,
+        };
+
+        let mut resolver = TypeResolver::new(&loaded.dwarf, &unit, loaded.address_size);
+        let mut entries = unit.entries();
+        while let Some((_, entry)) = entries.next_dfs().ok().flatten() {
+            let tag = entry.tag();
+            if matches!(
+                tag,
+                gimli::DW_TAG_base_type
+                    | gimli::DW_TAG_pointer_type
+                    | gimli::DW_TAG_reference_type
+                    | gimli::DW_TAG_const_type
+                    | gimli::DW_TAG_volatile_type
+                    | gimli::DW_TAG_restrict_type
+                    | gimli::DW_TAG_atomic_type
+                    | gimli::DW_TAG_typedef
+                    | gimli::DW_TAG_array_type
+                    | gimli::DW_TAG_structure_type
+                    | gimli::DW_TAG_class_type
+                    | gimli::DW_TAG_union_type
+                    | gimli::DW_TAG_enumeration_type
+                    | gimli::DW_TAG_subroutine_type
+            ) {
+                let _ = resolver.resolve_type(entry.offset());
+            }
+        }
+    }
+}

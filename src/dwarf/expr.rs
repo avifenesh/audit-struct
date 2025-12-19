@@ -79,3 +79,74 @@ pub fn try_simple_offset(
 
     Some(value)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gimli::{Encoding, EndianSlice, Format, RunTimeEndian};
+
+    fn encoding(address_size: u8) -> Encoding {
+        Encoding { address_size, format: Format::Dwarf32, version: 4 }
+    }
+
+    fn expr(bytes: &[u8]) -> Expression<DwarfSlice<'_>> {
+        Expression(EndianSlice::new(bytes, RunTimeEndian::Little))
+    }
+
+    fn uleb(mut value: u64) -> Vec<u8> {
+        let mut out = Vec::new();
+        loop {
+            let mut byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value != 0 {
+                byte |= 0x80;
+            }
+            out.push(byte);
+            if value == 0 {
+                break;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn try_simple_offset_plus_uconst() {
+        let mut bytes = vec![0x23]; // DW_OP_plus_uconst
+        bytes.extend_from_slice(&uleb(7));
+        assert_eq!(try_simple_offset(expr(&bytes), encoding(8)), Some(7));
+    }
+
+    #[test]
+    fn try_simple_offset_constu() {
+        let mut bytes = vec![0x10]; // DW_OP_constu
+        bytes.extend_from_slice(&uleb(42));
+        assert_eq!(try_simple_offset(expr(&bytes), encoding(8)), Some(42));
+    }
+
+    #[test]
+    fn try_simple_offset_rejects_extra_ops() {
+        let bytes = vec![0x23, 0x01, 0x23, 0x01]; // two ops
+        assert_eq!(try_simple_offset(expr(&bytes), encoding(8)), None);
+    }
+
+    #[test]
+    fn evaluate_member_offset_returns_value() {
+        let bytes = vec![0x23, 0x05]; // DW_OP_plus_uconst 5
+        let value = evaluate_member_offset(expr(&bytes), encoding(8)).unwrap();
+        assert_eq!(value, Some(5));
+    }
+
+    #[test]
+    fn evaluate_member_offset_invalid_address_size() {
+        let bytes = vec![0x10, 0x01]; // DW_OP_constu 1
+        let value = evaluate_member_offset(expr(&bytes), encoding(0)).unwrap();
+        assert!(value.is_some());
+    }
+
+    #[test]
+    fn evaluate_member_offset_empty_expression() {
+        let bytes: [u8; 0] = [];
+        let value = evaluate_member_offset(expr(&bytes), encoding(8)).unwrap();
+        assert_eq!(value, Some(0));
+    }
+}

@@ -138,12 +138,23 @@ struct Widget : Countable<Widget> {
     uint32_t height;
 };
 
+class WidgetClass {
+public:
+    int32_t id;
+    int32_t flags;
+};
+
 // Template with enum
 enum class Status : uint8_t {
     Pending,
     Running,
     Complete,
     Failed
+};
+
+// Reference type holder
+struct RefHolder {
+    int& ref;
 };
 
 template<typename T>
@@ -217,10 +228,14 @@ int main() {
 
     // Widget with CRTP
     Widget widget{};
+    WidgetClass widget_class{};
 
     // Tasks
     Task<int32_t> task_int{};
     Task<Vector<char>> task_vec{};
+
+    int ref_value = 7;
+    RefHolder ref_holder{ref_value};
 
     // Prevent optimization
     (void)c_int; (void)c_double; (void)c_ptr;
@@ -238,7 +253,9 @@ int main() {
     (void)ss15; (void)ss31;
     (void)ti_int; (void)ti_double;
     (void)widget;
+    (void)widget_class;
     (void)task_int; (void)task_vec;
+    (void)ref_holder;
 
     return 0;
 }
